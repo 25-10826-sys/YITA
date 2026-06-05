@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>이순신고등학교 에브리타임</title>
+    <style>
+        /* 기본 초기화 */
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Malgun Gothic", sans-serif; }
+        body { background-color: #fff; color: #333; }
+        a { text-decoration: none; color: inherit; }
+
+        /* --- 1. 상단 헤더 & 메가 메뉴 상단 네비게이션 --- */
+        header { background-color: #fff; border-bottom: 1px solid #e3e3e3; width: 100%; }
+        .nav-top { max-width: 1180px; margin: 0 auto; height: 50px; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; }
+        .logo-area { display: flex; align-items: center; gap: 10px; }
+        .logo-area .logo-icon { width: 30px; height: 30px; background: #c62917; border-radius: 8px; }
+        .logo-area .logo-text { font-size: 18px; font-weight: bold; color: #222; }
+        .nav-menu { display: flex; list-style: none; gap: 24px; font-size: 15px; font-weight: bold; color: #444; }
+        .nav-menu li.active { color: #c62917; }
+        .nav-auth-btn { border: 1px solid #ccc; padding: 6px 12px; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer; background: #fff; }
+
+        /* 메가 메뉴판 (스크린샷 상단 회색 게시판 목록 영역) */
+        .mega-menu-panel { background-color: #fcfcfc; border-bottom: 1px solid #e3e3e3; padding: 20px 0; }
+        .mega-menu-container { max-width: 1180px; margin: 0 auto; display: grid; grid-template-columns: repeat(5, 1fr); gap: 20px; padding: 0 20px; font-size: 13px; }
+        .mega-column h4 { font-size: 13px; color: #c62917; margin-bottom: 10px; font-weight: bold; }
+        .mega-column ul { list-style: none; }
+        .mega-column ul li { margin-bottom: 8px; color: #555; cursor: pointer; }
+        .mega-column ul li:hover { color: #c62917; text-decoration: underline; }
+
+        /* --- 2. 메인 3단 레이아웃 --- */
+        .main-wrapper { max-width: 1180px; margin: 25px auto; display: grid; grid-template-columns: 240px 1fr 300px; gap: 24px; padding: 0 20px; }
+
+        /* 좌측 영역 (로그인 및 프로필) */
+        .left-sidebar { display: flex; flex-direction: column; gap: 16px; }
+        .login-card { border: 1px solid #e3e3e3; border-radius: 4px; padding: 16px; text-align: center; background: #fff; }
+        .login-card p { font-size: 12px; color: #666; margin-bottom: 12px; line-height: 1.4; }
+        .login-card input, .login-card select { width: 100%; padding: 8px; margin-bottom: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px; }
+        .btn-red-login { width: 100%; background: #c62917; color: #fff; border: none; padding: 10px; border-radius: 4px; font-weight: bold; font-size: 13px; cursor: pointer; }
+        
+        .profile-card { border: 1px solid #e3e3e3; border-radius: 4px; padding: 16px; background: #fff; }
+        .profile-name { font-size: 15px; font-weight: bold; margin-bottom: 4px; }
+        .profile-school { font-size: 12px; color: #888; margin-bottom: 12px; }
+
+        /* 중앙 영역 (배너 및 게시판 바둑판) */
+        .center-content { display: flex; flex-direction: column; gap: 20px; }
+        .main-banner { background: linear-gradient(135deg, #007aff, #00d2ff); color: white; padding: 25px; border-radius: 4px; position: relative; font-weight: bold; font-size: 18px; }
+        .main-banner span { font-size: 12px; display: block; margin-top: 5px; opacity: 0.9; }
+        
+        /* 글쓰기 패널 (선택한 게시판에 바인딩) */
+        .write-panel { border: 1px solid #e3e3e3; border-radius: 4px; padding: 16px; background: #fafafa; }
+        .write-panel h4 { font-size: 13px; font-weight: bold; margin-bottom: 8px; color: #333; }
+        .write-panel input, .write-panel textarea { width: 100%; border: 1px solid #ddd; padding: 8px; border-radius: 4px; font-size: 13px; margin-bottom: 8px; }
+        .write-panel-bottom { display: flex; justify-content: space-between; align-items: center; }
+
+        /* 게시판 바둑판 그리드 (스크린샷 스타일) */
+        .board-grid-box { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .board-preview-card { border: 1px solid #e3e3e3; border-radius: 4px; padding: 14px; min-height: 180px; }
+        .board-preview-card h3 { font-size: 14px; color: #c62917; font-weight: bold; margin-bottom: 10px; cursor: pointer; }
+        .preview-list { list-style: none; font-size: 13px; }
+        .preview-item { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #f2f2f2; }
+        .preview-item:last-child { border-bottom: none; }
+        .preview-item .p-title { max-width: 70%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #333; }
+        .preview-item .p-time { color: #a6a6a6; font-size: 11px; }
+
+        /* 상세 글 보기 팝업 모달/공간 스타일 */
+        .detail-view-container { border: 1px solid #c62917; border-radius: 4px; padding: 16px; background: #fff; margin-bottom: 15px; }
+
+        /* 우측 영역 (검색창 및 인기글) */
+        .right-sidebar { display: flex; flex-direction: column; gap: 16px; }
+        .search-box { border: 1px solid #c62917; border-radius: 20px; padding: 8px 16px; display: flex; align-items: center; }
+        .search-box input { border: none; width: 100%; outline: none; font-size: 13px; }
+        
+        .right-card { border: 1px solid #e3e3e3; border-radius: 4px; padding: 14px; }
+        .right-card h3 { font-size: 14px; font-weight: bold; color: #222; margin-bottom: 10px; display: flex; justify-content: space-between; }
+        .hot-article-item { border-bottom: 1px solid #f2f2f2; padding: 8px 0; cursor: pointer; }
+        .hot-article-item:last-child { border-bottom: none; }
+        .hot-article-title { font-size: 13px; font-weight: bold; color: #333; margin-bottom: 4px; }
+        .hot-article-info { font-size: 11px; color: #a6a6a6; display: flex; gap: 8px; margin-top: 4px; }
+    </style>
+</head>
+<body>
+
+    <!-- 1. 상단 네비게이션 헤더 -->
+    <header>
+        <div class="nav-top">
+            <div class="logo-area">
+                <div class="logo-icon"></div>
+                <div class="logo-text">에브리타임</div>
+            </div>
+            <ul class="nav-menu">
+                <li class="active"><a href="#">게시판</a></li>
+                <li><a href="#">시간표</a></li>
+                <li><a href="#">강의실</a></li>
+                <li><a href="#">학점계산기</a></li>
+            </ul>
+            <button class="nav-auth-btn" id="top-login-indicator">로그인 필요</button>
+        </div>
+    </header>
+
+    <!-- 메가 메뉴판 (스크린샷 상단 전체 게시판 아코디언 매핑 구조) -->
+    <div class="mega-menu-panel">
+        <div class="mega-menu-container">
+            <div class="mega-column">
+                <h4>기본/학년 게시판</h4>
+                <ul>
+                    <li onclick="switchBoard(1)">전체 게시판 📝</li>
+                    <li onclick="switchBoard(2)">1학년 게시판 👶</li>
+                    <li onclick="switchBoard(3)">2학년 게시판 👦</li>
+                    <li onclick="switchBoard(4)">3학년 게시판 👨‍🎓</li>
+                </ul>
+            </div>
+            <div class="mega-column">
+                <h4>공지 게시판 (과목분리)</h4>
+                <ul>
+                    <li onclick="switchBoard(5)">📢 수학 공지</li>
+                    <li onclick="switchBoard(6)">📢 과학 공지</li>
+                    <li onclick="switchBoard(7)">📢 국어 공지</li>
+                    <li onclick="switchBoard(8)">📢 영어 공지</li>
+                    <li onclick="switchBoard(9)">📢 사회 공지</li>
+                </ul>
+            </div>
+            <div class="mega-column">
+                <h4>커뮤니티 소모임</h4>
+                <ul id="mega-club-list">
+                    <li style="color:#aaa; font-size:12px;">개설된 소모임 없음</li>
+                </ul>
+            </div>
+            <div class="mega-column">
+                <h4>학생회 / 동아리</h4>
+                <ul>
+                    <li>총학생회 소식</li>
+                    <li>방송국 / 신문사</li>
+                </ul>
+            </div>
+            <div class="mega-column">
+                <h4>학업 / 진로</h4>
+                <ul>
+                    <li>수행평가 팁</li>
+                    <li>진학상담실</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. 메인 3단 레이아웃 메인바디 -->
+    <div class="main-wrapper">
+        
+        <!-- [좌측 단] -->
+        <div class="left-sidebar">
+            <!-- 로그인 박스 (로그인 전) -->
+            <div class="login-card" id="left-auth-box">
+                <p>커뮤니티 이용을 위해<br><strong>로그인</strong>이 필요합니다!</p>
+                <input type="email" id="u-email" value="student@yisunsin.cnehs.kr" placeholder="학교 구글 계정">
+                <input type="text" id="u-name" value="이순신" placeholder="이름 입력">
+                <select id="u-grade">
+                    <option value="1">1학년 (Senior 1)</option>
+                    <option value="2">2학년 (Senior 2)</option>
+                    <option value="3">3학년 (Senior 3)</option>
+                </select>
+                <button class="btn-red-login" onclick="executeGoogleLogin()">구글 계정으로 로그인</button>
+            </div>
+
+            <!-- 프로필 박스 (로그인 후) -->
+            <div class="profile-card" id="left-profile-box" style="display:none;">
+                <div class="profile-name" id="display-name">이순신</div>
+                <div class="profile-school" id="display-grade">이순신고등학교 3학년</div>
+                <div style="border-top:1px solid #eee; padding-top:10px; margin-top:10px;">
+                    <input type="text" id="new-club-name" placeholder="새 소모임 이름" style="width:100%; padding:6px; font-size:12px; margin-bottom:4px;">
+                    <button onclick="requestNewClub()" style="width:100%; background:#444; color:#fff; font-size:11px; border:none; padding:5px; cursor:pointer; border-radius:2px;">소모임 신설 신청</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- [중앙 단] -->
+        <div class="center-content">
+            <!-- 홍보 배너 -->
+            <div class="main-banner">
+                Run & Learn With 이순신고 🚀
+                <span>학교 구글 인증 학생 전용 익명 소통 플랫폼</span>
+            </div>
+
+            <!-- 선택된 게시판 유기적 글쓰기 공간 (로그인 시 오픈) -->
+            <div class="write-panel" id="center-write-form" style="display:none;">
+                <h4 id="current-board-title">📌 게시판을 선택하면 글을 쓸 수 있습니다.</h4>
+                <input type="text" id="form-title" placeholder="글 제목을 입력하세요.">
+                <textarea id="form-content" placeholder="내용을 입력하세요 (수행평가, 시험 정보 공유 등)" rows="3" style="resize:none;"></textarea>
+                <div class="write-panel-bottom">
+                    <label style="font-size:12px; color:#666; cursor:pointer;"><input type="checkbox" id="form-anon"> 익명글 적용</label>
+                    <button onclick="submitArticle()" style="background:#c62917; color:#fff; border:none; padding:6px 16px; border-radius:4px; font-weight:bold; cursor:pointer;">작성하기</button>
+                </div>
+            </div>
+
+            <!-- 특정 글 클릭 시 실시간 댓글/좋아요/신고 활성화되는 상세뷰어 창 -->
+            <div id="article-detail-viewer"></div>
+
+            <!-- 중앙 바둑판식 게시판 미리보기 (스크린샷 핵심 레이아웃) -->
+            <div class="board-grid-box">
+                <div class="board-preview-card" onclick="switchBoard(1)">
+                    <h3>자유게시판 (전체)</h3>
+                    <div class="preview-list" id="mini-board-1"><p style="color:#ccc; font-size:12px;">로그인 후 활성화</p></div>
+                </div>
+                <div class="board-preview-card" onclick="switchBoard(2)">
+                    <h3>1학년 게시판</h3>
+                    <div class="preview-list" id="mini-board-2"><p style="color:#ccc; font-size:12px;">로그인 후 활성화</p></div>
+                </div>
+                <div class="board-preview-card" onclick="switchBoard(3)">
+                    <h3>2학년 게시판</h3>
+                    <div class="preview-list" id="mini-board-3"><p style="color:#ccc; font-size:12px;">로그인 후 활성화</p></div>
+                </div>
+                <div class="board-preview-card" onclick="switchBoard(4)">
+                    <h3>3학년 게시판</h3>
+                    <div class="preview-list" id="mini-board-4"><p style="color:#ccc; font-size:12px;">로그인 후 활성화</p></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- [우측 단] -->
+        <div class="right-sidebar">
+            <!-- 검색바 -->
+            <div class="search-box">
+                <input type="text" placeholder="전체 게시판의 글을 검색하세요!">
+            </div>
+
+            <!-- 실시간 인기 글 상자 -->
+            <div class="right-card">
+                <h3>실시간 인기 글 ⚡</h3>
+                <div id="right-hot-box" style="font-size:12px; color:#aaa; padding:10px 0;">로그인 후 조회할 수 있습니다.</div>
+            </div>
+
+            <!-- 관리자 가상 제어 콘솔 -->
+            <div class="right-card" style="background:#fff9f9; border:1px solid #ffcccc;">
+                <h3 style="color:#c62917; font-size:12px;">🛠️ 소모임 승인 관리 콘솔</h3>
+                <div id="admin-club-console" style="font-size:12px; color:#666; margin-top:6px;">대기 중인 리스트가 없습니다.</div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- 스크립트 로직부 -->
+    <script>
+        let sessionUser = null;
+        let selectedBoardId = 1; // 기본은 전체게시판
+        const BASE_API = "http://127.0.0.1:8000/api";
+
+        async function executeGoogleLogin() {
+            const email = document.getElementById('u-email').value;
+            const name = document.getElementById('u-name').value;
+            const grade = parseInt(document.getElementById('u-grade').value);
+
+            const response = await fetch(`${BASE_API}/auth/google`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, name, grade })
+            });
+            const result = await response.json();
+
+            if (response.status === 403) { alert(result.detail); return; }
+
+            sessionUser = result;
+            
+            // UI 상태 반영 전환
+            document.getElementById('left-auth-box').style.display = 'none';
+            document.getElementById('left-profile-box').style.display = 'block';
+            document.getElementById('center-write-form').style.display = 'block';
+            document.getElementById('top-login-indicator').innerText = "인증 완료";
+            document.getElementById('display-name').innerText = sessionUser.name;
+            document.getElementById('display-grade').innerText = `이순신고등학교 ${sessionUser.grade}학년`;
+
+            await syncBoardsMenuAndPreviews();
+            await syncAdminClubConsole();
+            switchBoard(1); // 전체게시판 바인딩
+        }
+
+        async function syncBoardsMenuAndPreviews() {
+            if(!sessionUser) return;
+            const res = await fetch(`${BASE_API}/boards`);
+            const boards = await res.json();
+
+            // 소모임 동적 상단 메뉴 렌더링
+            const clubMenu = document.getElementById('mega-club-list');
+            clubMenu.innerHTML = "";
+            const dynamicClubs = boards.filter(b => b.type === 'club');
+            if(dynamicClubs.length === 0) clubMenu.innerHTML = `<li style="color:#aaa; font-size:12px;">개설된 소모임 없음</li>`;
+            dynamicClubs.forEach(club => {
+                clubMenu.innerHTML += `<li onclick="switchBoard(${club.board_id})">🎪 ${club.club_name}</li>`;
+            });
+
+            // 1~4번 메인 그리드 게시판 최신글 3개씩 요약 렌더링 (스크린샷 방식)
+            for (let id = 1; id <= 4; id++) {
+                const pRes = await fetch(`${BASE_API}/posts/${id}`);
+                const posts = await pRes.json();
+                const targetDiv = document.getElementById(`mini-board-${id}`);
+                targetDiv.innerHTML = posts.length === 0 ? `<p style="color:#ccc; font-size:12px;">작성된 글이 없습니다.</p>` : "";
+                
+                posts.slice(0, 3).forEach(p => {
+                    targetDiv.innerHTML += `
+                        <div class="preview-item" onclick="openArticleDetail(${p.post_id}, ${id}); event.stopPropagation();">
+                            <span class="p-title">${p.title}</span>
+                            <span class="p-time">방금</span>
+                        </div>
+                    `;
+                });
+            }
+
+            // 우측 실시간 인기 글 리스트 동기화
+            const allPosts = await fetch(`${BASE_API}/posts/1`);
+            const hotPosts = await allPosts.json();
+            const hotBox = document.getElementById('right-hot-box');
+            hotBox.innerHTML = hotPosts.length === 0 ? "인기 게시글이 없습니다." : "";
+            hotPosts.slice(0, 3).forEach(hp => {
+                hotBox.innerHTML += `
+                    <div class="hot-article-item" onclick="openArticleDetail(${hp.post_id}, 1)">
+                        <div class="hot-article-title">${hp.title}</div>
+                        <div class="hot-article-info"><span>👍 ${hp.like_count}</span><span>💬 ${hp.comment_count}</span></div>
+                    </div>
+                `;
+            });
+        }
+
+        function switchBoard(boardId) {
+            selectedBoardId = boardId;
+            let titleText = "전체 게시판 📝";
+            if(boardId === 2) titleText = "1학년 전용 게시판 👶";
+            if(boardId === 3) titleText = "2학년 전용 게시판 👦";
+            if(boardId === 4) titleText = "3학년 전용 게시판 👨‍🎓";
+            if(boardId >= 5 && boardId <= 9) {
+                const subs = ["수학", "과학", "국어", "영어", "사회"];
+                titleText = `📢 공지사항 게시판 [${subs[boardId-5]}]`;
+            }
+            if(boardId > 9) titleText = "🎪 승인 완료 소모임 공간";
+
+            document.getElementById('current-board-title').innerText = `✏️ ${titleText}에 새 글 쓰기`;
+            document.getElementById('article-detail-viewer').innerHTML = `<p style="color:#666; font-size:13px; font-weight:bold;">💡 상단 메뉴바나 메인 바둑판에서 게시판을 골라 글을 적거나, 아래 요약본의 글을 클릭해 댓글/좋아요/신고를 테스트하세요!</p>`;
+        }
+
+        async function submitArticle() {
+            const title = document.getElementById('form-title').value;
+            const content = document.getElementById('form-content').value;
+            const is_anonymous = document.getElementById('form-anon').checked;
+
+            const res = await fetch(`${BASE_API}/posts`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'user-id': sessionUser.user_id },
+                body: JSON.stringify({ board_id: selectedBoardId, title, content, is_anonymous })
+            });
+
+            if (res.status === 403) {
+                const err = await res.json();
+                alert(err.detail);
+                return;
+            }
+
+            document.getElementById('form-title').value = "";
+            document.getElementById('form-content').value = "";
+            await syncBoardsMenuAndPreviews();
+            switchBoard(selectedBoardId);
+        }
+
+        async function openArticleDetail(postId, boardId) {
+            const pRes = await fetch(`${BASE_API}/posts/${boardId}`);
+            const posts = await pRes.json();
+            const article = posts.find(p => p.post_id === postId);
+
+            const cRes = await fetch(`${BASE_API}/posts/${postId}/comments`);
+            const comments = await cRes.json();
+
+            let commentRows = "";
+            comments.forEach(c => {
+                commentRows += `<div style="font-size:12px; border-bottom:1px dashed #eee; padding:4px 0;"><strong>${c.author_name}:</strong> ${c.content}</div>`;
+            });
+
+            const viewer = document.getElementById('article-detail-viewer');
+            viewer.innerHTML = `
+                <div class="detail-view-container">
+                    <h3 style="font-size:16px; margin-bottom:4px;">${article.title}</h3>
+                    <p style="font-size:13px; color:#444; margin-bottom:12px;">${article.content}</p>
+                    <div style="font-size:11px; color:#888; margin-bottom:10px;">작성자: ${article.author_name} | 👍 ${article.like_count}</div>
+                    <div style="display:flex; gap:8px; margin-bottom:12px;">
+                        <button onclick="triggerLike(${postId}, ${boardId})" style="padding:4px 8px; font-size:12px; cursor:pointer;">👍 좋아요</button>
+                        <button onclick="triggerReport(${postId}, ${boardId})" style="padding:4px 8px; font-size:12px; color:red; cursor:pointer;">🚨 신고</button>
+                    </div>
+                    <div style="background:#f9f9f9; padding:8px; border-radius:4px;">
+                        <div id="comment-list-zone">${commentRows || '<span style="color:#aaa; font-size:11px;">댓글이 없습니다.</span>'}</div>
+                        <div style="display:flex; gap:6px; margin-top:8px;">
+                            <input type="text" id="reply-input" placeholder="댓글 내용을 작성하세요." style="flex:1; padding:4px; font-size:12px;">
+                            <label style="font-size:11px; align-self:center;"><input type="checkbox" id="reply-anon"> 익명</label>
+                            <button onclick="submitReply(${postId}, ${boardId})" style="padding:4px 10px; background:#c62917; color:#fff; border:none; font-size:12px; cursor:pointer;">등록</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        async function triggerLike(postId, boardId) {
+            await fetch(`${BASE_API}/posts/${postId}/like`, { method: 'POST', headers: { 'user-id': sessionUser.user_id } });
+            await syncBoardsMenuAndPreviews();
+            await openArticleDetail(postId, boardId);
+        }
+
+        async function triggerReport(postId, boardId) {
+            const res = await fetch(`${BASE_API}/posts/${postId}/report`, { method: 'POST', headers: { 'user-id': sessionUser.user_id } });
+            const data = await res.json();
+            alert(data.message + "\n(3회 누적 시 해당 유저는 하루 동안 글쓰기가 완전 금지되는 타임아웃 정지 처리가 부여됩니다.)");
+            await syncBoardsMenuAndPreviews();
+            await openArticleDetail(postId, boardId);
+        }
+
+        async function submitReply(postId, boardId) {
+            const content = document.getElementById('reply-input').value;
+            const is_anonymous = document.getElementById('reply-anon').checked;
+
+            await fetch(`${BASE_API}/comments`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'user-id': sessionUser.user_id },
+                body: JSON.stringify({ post_id: postId, content, is_anonymous })
+            });
+            await syncBoardsMenuAndPreviews();
+            await openArticleDetail(postId, boardId);
+        }
+
+        async function requestNewClub() {
+            const club_name = document.getElementById('new-club-name').value;
+            if(!club_name) return;
+            await fetch(`${BASE_API}/boards/club`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'user-id': sessionUser.user_id },
+                body: JSON.stringify({ club_name })
+            });
+            document.getElementById('new-club-name').value = "";
+            alert("소모임 신설 건의 완료! 우측 관리자 제어 콘솔에서 즉시 수동 승인해 보세요.");
+            await syncAdminClubConsole();
+        }
+
+        async function syncAdminClubConsole() {
+            const res = await fetch(`${BASE_API}/admin/pending-clubs`);
+            const pending = await res.json();
+            const consoleBox = document.getElementById('admin-club-console');
+            
+            consoleBox.innerHTML = pending.length === 0 ? "대기 중인 요청 없음" : "";
+            pending.forEach(club => {
+                consoleBox.innerHTML += `
+                    <div style="border:1px solid #ddd; padding:6px; margin-top:4px; border-radius:4px; background:#fff;">
+                        <strong>${club.club_name}</strong>
+                        <button onclick="approveClub(${club.board_id})" style="background:green; color:#fff; border:none; padding:2px 6px; font-size:10px; cursor:pointer; margin-left:10px; border-radius:2px;">승인</button>
+                    </div>
+                `;
+            });
+        }
+
+        async function approveClub(boardId) {
+            await fetch(`${BASE_API}/admin/boards/${boardId}/approve`, { method: 'POST' });
+            alert("해당 소모임이 정상 승인 및 개설되었습니다! 메가 메뉴판의 소모임 탭에 즉시 등록됩니다.");
+            await syncBoardsMenuAndPreviews();
+            await syncAdminClubConsole();
+        }
+    </script>
+</body>
+</html>
