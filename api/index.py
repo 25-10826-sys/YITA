@@ -25,7 +25,12 @@ except Exception:
 SCHOOL_DOMAIN = os.getenv("SCHOOL_EMAIL_DOMAIN", "yisunsin.cnehs.kr")
 DEFAULT_ADMIN_EMAIL = os.getenv("DEFAULT_ADMIN_EMAIL", f"admin@{SCHOOL_DOMAIN}").lower()
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "pol357000**")
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL = (
+    os.getenv("DATABASE_URL")
+    or os.getenv("POSTGRES_URL")
+    or os.getenv("POSTGRES_PRISMA_URL")
+    or os.getenv("POSTGRES_URL_NON_POOLING")
+)
 DB_FILE = os.getenv("DATABASE_PATH", "database.sqlite")
 DB_KIND = "postgres" if DATABASE_URL else "sqlite"
 
