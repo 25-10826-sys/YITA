@@ -36,55 +36,16 @@ function showToast(message) {
     }, 2600);
 }
 
-const SUPABASE_URL = "https://epwscaboxplxmvwlumoc.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVwd3NjYWJveHBseG12d2x1bW9jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE0MDA3MjMsImV4cCI6MjA5Njk3NjcyM30.lRX-kLjdaAgJIcyMu42qdqMmcb7_ypDg-rYBCpxMDQ0";
-
 async function api(path, options = {}) {
-    const headers = {
-        apikey: SUPABASE_ANON_KEY,
-        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-        ...(options.headers || {})
-    };
+    const headers = { ...(options.headers || {}) };
+    if (sessionUser) headers["user-id"] = sessionUser.user_id;
+    if (options.body) headers["Content-Type"] = "application/json";
 
-    if (options.body && !(options.body instanceof FormData)) {
-        headers["Content-Type"] = "application/json";
-    }
-
-    const response = await fetch(`${SUPABASE_URL}${path}`, {
-        ...options,
-        headers
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-        throw new Error(
-            data?.msg ||
-            data?.message ||
-            data?.error_description ||
-            "요청 실패"
-        );
-    }
-
-    return data;
-
-
-    const contentType = response.headers.get("content-type") || "";
-
-    const data = contentType.includes("application/json")
+    const response = await fetch(`${BASE_API}${path}`, { ...options, headers });
+    const data = (response.headers.get("content-type") || "").includes("application/json")
         ? await response.json()
         : null;
-
-
-    if (!response.ok) {
-        throw new Error(
-            data?.detail ||
-            data?.message ||
-            "요청에 실패했습니다."
-        );
-    }
-
-
+    if (!response.ok) throw new Error(data?.detail || data?.message || "요청에 실패했습니다.");
     return data;
 }
 
