@@ -41,7 +41,7 @@ async function api(path, options = {}) {
     if (sessionUser) headers["user-id"] = sessionUser.user_id;
     if (options.body) headers["Content-Type"] = "application/json";
 
-    const response = await fetch(`${BASE_API}${path}`, { ...options, headers });
+    const response = await fetch(`${'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVwd3NjYWJveHBseG12d2x1bW9jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE0MDA3MjMsImV4cCI6MjA5Njk3NjcyM30.lRX-kLjdaAgJIcyMu42qdqMmcb7_ypDg-rYBCpxMDQ0'}${path}`, { ...options, headers });
     const data = (response.headers.get("content-type") || "").includes("application/json")
         ? await response.json()
         : null;
