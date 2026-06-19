@@ -41,7 +41,7 @@ async function api(path, options = {}) {
     if (sessionUser) headers["user-id"] = sessionUser.user_id;
     if (options.body) headers["Content-Type"] = "application/json";
 
-    const response = await fetch(`${'https://epwscaboxplxmvwlumoc.supabase.co'}${path}`, { ...options, headers });
+    const response = await fetch(`${'sb_publishable_hfJbvypQih4CDhOzemqpUA_vNQW5Eam'}${path}`, { ...options, headers });
     const data = (response.headers.get("content-type") || "").includes("application/json")
         ? await response.json()
         : null;
