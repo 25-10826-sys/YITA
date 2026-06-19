@@ -5,6 +5,7 @@ import hmac
 import os
 from pathlib import Path
 import sqlite3
+import traceback
 from typing import Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
@@ -189,7 +190,12 @@ def init_db():
     conn = get_connection()
     cursor = conn.cursor()
     auto_id = "SERIAL PRIMARY KEY" if DB_KIND == "postgres" else "INTEGER PRIMARY KEY AUTOINCREMENT"
-    now_default = "CURRENT_TIMESTAMP::TEXT" if DB_KIND == "postgres" else "CURRENT_TIMESTAMP"
+    now_default = "(CURRENT_TIMESTAMP::TEXT)" if DB_KIND == "postgres" else "CURRENT_TIMESTAMP"
+    add_created_at = (
+        "TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP::TEXT)"
+        if DB_KIND == "postgres"
+        else "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP"
+    )
 
     cursor.execute(
         f"""
@@ -281,7 +287,7 @@ def init_db():
         ("users", "password_hash", "TEXT"),
         ("users", "can_post_notice", "INTEGER NOT NULL DEFAULT 0"),
         ("users", "suspend_reason", "TEXT"),
-        ("users", "created_at", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP"),
+        ("users", "created_at", add_created_at),
         ("boards", "club_name", "TEXT"),
         ("boards", "is_approved", "INTEGER NOT NULL DEFAULT 1"),
         ("posts", "like_count", "INTEGER NOT NULL DEFAULT 0"),
@@ -522,20 +528,26 @@ def health():
 
 @app.post("/api/auth/signup")
 def signup(data: SignupInput, conn: DbConnection = Depends(get_db)):
-    cursor = conn.cursor()
-    cursor.execute("SELECT user_id FROM users WHERE email = ?", (data.email,))
-    if cursor.fetchone():
-        raise HTTPException(status_code=409, detail="이미 가입된 이메일입니다.")
-    cursor.execute(
-        """
-        INSERT INTO users (email, name, grade, password_hash, role, can_post_notice)
-        VALUES (?, ?, ?, ?, 'student', 0)
-        """,
-        (data.email, data.name, data.grade, hash_password(data.password)),
-    )
-    conn.commit()
-    cursor.execute("SELECT * FROM users WHERE user_id = ?", (cursor.lastrowid,))
-    return public_user(dict(cursor.fetchone()))
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT user_id FROM users WHERE email = ?", (data.email,))
+        if cursor.fetchone():
+            raise HTTPException(status_code=409, detail="이미 가입된 이메일입니다.")
+        cursor.execute(
+            """
+            INSERT INTO users (email, name, grade, password_hash, role, can_post_notice)
+            VALUES (?, ?, ?, ?, 'student', 0)
+            """,
+            (data.email, data.name, data.grade, hash_password(data.password)),
+        )
+        conn.commit()
+        cursor.execute("SELECT * FROM users WHERE user_id = ?", (cursor.lastrowid,))
+        return public_user(dict(cursor.fetchone()))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"회원가입 처리 중 서버 오류: {exc}")
 
 
 @app.post("/api/auth/login")
