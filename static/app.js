@@ -41,7 +41,7 @@ async function api(path, options = {}) {
     if (sessionUser) headers["user-id"] = sessionUser.user_id;
     if (options.body) headers["Content-Type"] = "application/json";
 
-    const response = await fetch(`${'https://epwscaboxplxmvwlumoc.supabase.co'}${path}`, { ...options, headers });
+    const response = await fetch(`${'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVwd3NjYWJveHBseG12d2x1bW9jIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MTQwMDcyMywiZXhwIjoyMDk2OTc2NzIzfQ.WjM0hgtZwnvuel75iRl9qORoPNS-2G7pDvW4t1DInxE'}${path}`, { ...options, headers });
     const data = (response.headers.get("content-type") || "").includes("application/json")
         ? await response.json()
         : null;
