@@ -1,4 +1,7 @@
 from datetime import datetime, timedelta
+import base64
+import hashlib
+import hmac
 import os
 from pathlib import Path
 import sqlite3
@@ -11,13 +14,6 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
 try:
-    from google.auth.transport import requests as google_requests
-    from google.oauth2 import id_token
-except Exception:
-    google_requests = None
-    id_token = None
-
-try:
     import psycopg
     from psycopg.rows import dict_row
 except Exception:
@@ -26,35 +22,43 @@ except Exception:
 
 
 SCHOOL_DOMAIN = os.getenv("SCHOOL_EMAIL_DOMAIN", "yisunsin.cnehs.kr")
-ADMIN_EMAILS = {
-    email.strip().lower()
-    for email in os.getenv("ADMIN_EMAILS", "").split(",")
-    if email.strip()
-}
+DEFAULT_ADMIN_EMAIL = os.getenv("DEFAULT_ADMIN_EMAIL", f"admin@{SCHOOL_DOMAIN}").lower()
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "pol357000**")
 DATABASE_URL = os.getenv("DATABASE_URL")
-DB_FILE = os.getenv("DATABASE_PATH", "/tmp/yita.sqlite" if os.getenv("VERCEL") else "database.sqlite")
+DB_FILE = os.getenv("DATABASE_PATH", "database.sqlite")
 DB_KIND = "postgres" if DATABASE_URL else "sqlite"
 
-app = FastAPI(title="YITA API")
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+STATIC_DIR = PROJECT_ROOT / "static"
+INDEX_FILE = PROJECT_ROOT / "index.html"
+ADMIN_FILE = PROJECT_ROOT / "admin.html"
 
+app = FastAPI(title="YITA API")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        origin.strip()
-        for origin in os.getenv("CORS_ORIGINS", "*").split(",")
-        if origin.strip()
-    ],
+    allow_origins=[origin.strip() for origin in os.getenv("CORS_ORIGINS", "*").split(",") if origin.strip()],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-STATIC_DIR = PROJECT_ROOT / "static"
-INDEX_FILE = PROJECT_ROOT / "index.html"
-
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+class RowDict(dict):
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return list(self.values())[key]
+        return super().__getitem__(key)
+
+
+def normalize_row(row):
+    if row is None:
+        return None
+    if isinstance(row, RowDict):
+        return row
+    return RowDict(dict(row))
 
 
 class DbCursor:
@@ -64,7 +68,7 @@ class DbCursor:
 
     def execute(self, sql: str, params=()):
         if DB_KIND == "postgres":
-            sql = self._convert_sql(sql)
+            sql = self._to_postgres(sql)
             self.cursor.execute(sql, params)
             if " returning " in sql.lower():
                 row = self.cursor.fetchone()
@@ -85,16 +89,17 @@ class DbCursor:
         return iter(self.fetchall())
 
     @staticmethod
-    def _convert_sql(sql: str) -> str:
+    def _to_postgres(sql: str) -> str:
         lowered = " ".join(sql.lower().split())
         returning_map = {
             "insert into users": "user_id",
+            "insert into boards": "board_id",
             "insert into posts": "post_id",
             "insert into comments": "comment_id",
-            "insert into boards": "board_id",
+            "insert into reports": "report_id",
         }
         sql = sql.replace("?", "%s")
-        if sql.lstrip().lower().startswith("insert into") and " returning " not in sql.lower():
+        if lowered.startswith("insert into") and " returning " not in lowered:
             for prefix, column in returning_map.items():
                 if lowered.startswith(prefix):
                     sql = f"{sql} RETURNING {column}"
@@ -109,29 +114,11 @@ class DbConnection:
     def cursor(self):
         return DbCursor(self.connection.cursor())
 
-    def execute(self, sql: str, params=()):
-        return self.cursor().execute(sql, params)
-
     def commit(self):
         self.connection.commit()
 
     def close(self):
         self.connection.close()
-
-
-class RowDict(dict):
-    def __getitem__(self, key):
-        if isinstance(key, int):
-            return list(self.values())[key]
-        return super().__getitem__(key)
-
-
-def normalize_row(row):
-    if row is None:
-        return None
-    if isinstance(row, RowDict):
-        return row
-    return RowDict(dict(row))
 
 
 def get_connection():
@@ -146,6 +133,14 @@ def get_connection():
     return DbConnection(conn)
 
 
+def get_db():
+    conn = get_connection()
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
 def column_exists(cursor: DbCursor, table: str, column: str) -> bool:
     if DB_KIND == "postgres":
         cursor.execute(
@@ -157,7 +152,6 @@ def column_exists(cursor: DbCursor, table: str, column: str) -> bool:
             (table, column),
         )
         return cursor.fetchone() is not None
-
     return any(row["name"] == column for row in cursor.execute(f"PRAGMA table_info({table})"))
 
 
@@ -166,11 +160,36 @@ def ensure_column(cursor: DbCursor, table: str, column: str, ddl: str):
         cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
 
 
-def create_tables(cursor: DbCursor):
-    if DB_KIND == "postgres":
-        auto_id = "SERIAL PRIMARY KEY"
-    else:
-        auto_id = "INTEGER PRIMARY KEY AUTOINCREMENT"
+def hash_password(password: str, salt: Optional[str] = None) -> str:
+    if salt is None:
+        salt = base64.urlsafe_b64encode(os.urandom(16)).decode("utf-8")
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 120_000)
+    encoded = base64.urlsafe_b64encode(digest).decode("utf-8")
+    return f"{salt}${encoded}"
+
+
+def verify_password(password: str, password_hash: str) -> bool:
+    if not password_hash or "$" not in password_hash:
+        return False
+    salt, expected = password_hash.split("$", 1)
+    actual = hash_password(password, salt).split("$", 1)[1]
+    return hmac.compare_digest(actual, expected)
+
+
+def clean_text(value: str, field_name: str, min_length: int, max_length: int) -> str:
+    value = value.strip()
+    if len(value) < min_length:
+        raise ValueError(f"{field_name}은(는) {min_length}자 이상이어야 합니다.")
+    if len(value) > max_length:
+        raise ValueError(f"{field_name}은(는) {max_length}자를 넘을 수 없습니다.")
+    return value
+
+
+def init_db():
+    conn = get_connection()
+    cursor = conn.cursor()
+    auto_id = "SERIAL PRIMARY KEY" if DB_KIND == "postgres" else "INTEGER PRIMARY KEY AUTOINCREMENT"
+    now_default = "CURRENT_TIMESTAMP::TEXT" if DB_KIND == "postgres" else "CURRENT_TIMESTAMP"
 
     cursor.execute(
         f"""
@@ -179,8 +198,12 @@ def create_tables(cursor: DbCursor):
             email TEXT UNIQUE NOT NULL,
             name TEXT NOT NULL,
             grade INTEGER NOT NULL,
+            password_hash TEXT,
             role TEXT NOT NULL DEFAULT 'student',
-            timeout_until TEXT
+            can_post_notice INTEGER NOT NULL DEFAULT 0,
+            timeout_until TEXT,
+            suspend_reason TEXT,
+            created_at TEXT NOT NULL DEFAULT {now_default}
         )
         """
     )
@@ -205,7 +228,7 @@ def create_tables(cursor: DbCursor):
             content TEXT NOT NULL,
             is_anonymous INTEGER NOT NULL DEFAULT 0,
             like_count INTEGER NOT NULL DEFAULT 0,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            created_at TEXT NOT NULL DEFAULT {now_default},
             updated_at TEXT,
             FOREIGN KEY(board_id) REFERENCES boards(board_id),
             FOREIGN KEY(user_id) REFERENCES users(user_id)
@@ -220,7 +243,7 @@ def create_tables(cursor: DbCursor):
             user_id INTEGER NOT NULL,
             content TEXT NOT NULL,
             is_anonymous INTEGER NOT NULL DEFAULT 0,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            created_at TEXT NOT NULL DEFAULT {now_default},
             FOREIGN KEY(post_id) REFERENCES posts(post_id) ON DELETE CASCADE,
             FOREIGN KEY(user_id) REFERENCES users(user_id)
         )
@@ -233,26 +256,20 @@ def create_tables(cursor: DbCursor):
             post_id INTEGER NOT NULL,
             user_id INTEGER NOT NULL,
             reason TEXT NOT NULL,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at TEXT NOT NULL DEFAULT {now_default},
             UNIQUE(post_id, user_id),
             FOREIGN KEY(post_id) REFERENCES posts(post_id) ON DELETE CASCADE,
             FOREIGN KEY(user_id) REFERENCES users(user_id)
         )
         """
     )
-
-
-def init_db():
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    create_tables(cursor)
     cursor.execute(
-        """
+        f"""
         CREATE TABLE IF NOT EXISTS post_likes (
             post_id INTEGER NOT NULL,
             user_id INTEGER NOT NULL,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            created_at TEXT NOT NULL DEFAULT {now_default},
             PRIMARY KEY(post_id, user_id),
             FOREIGN KEY(post_id) REFERENCES posts(post_id) ON DELETE CASCADE,
             FOREIGN KEY(user_id) REFERENCES users(user_id)
@@ -260,14 +277,27 @@ def init_db():
         """
     )
 
-    ensure_column(cursor, "boards", "club_name", "TEXT")
-    ensure_column(cursor, "boards", "is_approved", "INTEGER NOT NULL DEFAULT 1")
-    ensure_column(cursor, "posts", "like_count", "INTEGER NOT NULL DEFAULT 0")
-    ensure_column(cursor, "posts", "updated_at", "TEXT")
-    ensure_column(cursor, "users", "role", "TEXT NOT NULL DEFAULT 'student'")
-    ensure_column(cursor, "users", "timeout_until", "TEXT")
+    for table, column, ddl in [
+        ("users", "password_hash", "TEXT"),
+        ("users", "can_post_notice", "INTEGER NOT NULL DEFAULT 0"),
+        ("users", "suspend_reason", "TEXT"),
+        ("users", "created_at", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP"),
+        ("boards", "club_name", "TEXT"),
+        ("boards", "is_approved", "INTEGER NOT NULL DEFAULT 1"),
+        ("posts", "like_count", "INTEGER NOT NULL DEFAULT 0"),
+        ("posts", "updated_at", "TEXT"),
+        ("reports", "status", "TEXT NOT NULL DEFAULT 'pending'"),
+    ]:
+        ensure_column(cursor, table, column, ddl)
 
-    board_seed = [
+    seed_boards(cursor)
+    seed_admin(cursor)
+    conn.commit()
+    conn.close()
+
+
+def seed_boards(cursor: DbCursor):
+    seeds = [
         ("all", None, None, 1),
         ("grade_1", None, None, 1),
         ("grade_2", None, None, 1),
@@ -278,7 +308,7 @@ def init_db():
         ("notice", "english", None, 1),
         ("notice", "society", None, 1),
     ]
-    for board_type, category, club_name, is_approved in board_seed:
+    for board_type, category, club_name, is_approved in seeds:
         cursor.execute(
             """
             SELECT board_id FROM boards
@@ -293,42 +323,64 @@ def init_db():
                 (board_type, category, club_name, is_approved),
             )
 
-    conn.commit()
-    conn.close()
+
+def seed_admin(cursor: DbCursor):
+    cursor.execute("SELECT * FROM users WHERE email = ?", (DEFAULT_ADMIN_EMAIL,))
+    user = cursor.fetchone()
+    password_hash = hash_password(ADMIN_PASSWORD)
+    if user is None:
+        cursor.execute(
+            """
+            INSERT INTO users (email, name, grade, password_hash, role, can_post_notice)
+            VALUES (?, ?, ?, ?, 'admin', 1)
+            """,
+            (DEFAULT_ADMIN_EMAIL, "관리자", 3, password_hash),
+        )
+        return
+    cursor.execute(
+        """
+        UPDATE users
+        SET role = 'admin', can_post_notice = 1,
+            password_hash = COALESCE(password_hash, ?)
+        WHERE email = ?
+        """,
+        (password_hash, DEFAULT_ADMIN_EMAIL),
+    )
 
 
 init_db()
 
 
-def get_db():
-    conn = get_connection()
-    try:
-        yield conn
-    finally:
-        conn.close()
-
-
-def clean_text(value: str, field_name: str, min_length: int, max_length: int) -> str:
-    value = value.strip()
-    if len(value) < min_length:
-        raise ValueError(f"{field_name}은(는) {min_length}자 이상이어야 합니다.")
-    if len(value) > max_length:
-        raise ValueError(f"{field_name}은(는) {max_length}자를 넘을 수 없습니다.")
-    return value
-
-
-class GoogleAuthInput(BaseModel):
+class SignupInput(BaseModel):
     email: str
-    name: str = Field(min_length=1, max_length=30)
+    name: str
     grade: int = Field(ge=1, le=3)
-    credential: Optional[str] = None
+    password: str = Field(min_length=6, max_length=80)
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: str) -> str:
+        value = value.strip().lower()
+        if not value.endswith(f"@{SCHOOL_DOMAIN}"):
+            raise ValueError(f"학교 계정(@{SCHOOL_DOMAIN})만 사용할 수 있습니다.")
+        return value
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        return clean_text(value, "이름", 1, 30)
+
+
+class LoginInput(BaseModel):
+    email: str
+    password: str
 
     @field_validator("email")
     @classmethod
     def normalize_email(cls, value: str) -> str:
         value = value.strip().lower()
-        if "@" not in value:
-            raise ValueError("올바른 이메일을 입력해 주세요.")
+        if value == "admin":
+            return DEFAULT_ADMIN_EMAIL
         return value
 
 
@@ -349,20 +401,8 @@ class PostCreateInput(BaseModel):
         return clean_text(value, "본문", 1, 2000)
 
 
-class PostUpdateInput(BaseModel):
-    title: str
-    content: str
-    is_anonymous: bool = False
-
-    @field_validator("title")
-    @classmethod
-    def validate_title(cls, value: str) -> str:
-        return clean_text(value, "제목", 1, 80)
-
-    @field_validator("content")
-    @classmethod
-    def validate_content(cls, value: str) -> str:
-        return clean_text(value, "본문", 1, 2000)
+class PostUpdateInput(PostCreateInput):
+    board_id: int = 0
 
 
 class CommentCreateInput(BaseModel):
@@ -394,27 +434,26 @@ class ReportInput(BaseModel):
         return clean_text(value, "신고 사유", 2, 200)
 
 
-def verify_school_account(data: GoogleAuthInput):
-    if data.credential:
-        if not os.getenv("GOOGLE_CLIENT_ID"):
-            raise HTTPException(status_code=500, detail="GOOGLE_CLIENT_ID가 설정되지 않았습니다.")
-        if id_token is None or google_requests is None:
-            raise HTTPException(status_code=500, detail="Google 인증 라이브러리가 설치되지 않았습니다.")
-        try:
-            payload = id_token.verify_oauth2_token(
-                data.credential,
-                google_requests.Request(),
-                os.getenv("GOOGLE_CLIENT_ID"),
-            )
-        except Exception:
-            raise HTTPException(status_code=401, detail="Google 인증에 실패했습니다.")
-        data.email = payload.get("email", "").lower()
-        data.name = payload.get("name") or data.name
-        if not payload.get("email_verified"):
-            raise HTTPException(status_code=403, detail="인증되지 않은 Google 이메일입니다.")
+class NoticePermissionInput(BaseModel):
+    can_post_notice: bool
 
-    if not data.email.endswith(f"@{SCHOOL_DOMAIN}"):
-        raise HTTPException(status_code=403, detail=f"학교 계정(@{SCHOOL_DOMAIN})만 사용할 수 있습니다.")
+
+class SuspendInput(BaseModel):
+    days: int = Field(ge=1, le=365)
+    reason: str = Field(min_length=1, max_length=200)
+
+
+def public_user(user: dict):
+    return {
+        "user_id": user["user_id"],
+        "email": user["email"],
+        "name": user["name"],
+        "grade": user["grade"],
+        "role": user["role"],
+        "can_post_notice": bool(user.get("can_post_notice", 0)),
+        "timeout_until": user.get("timeout_until"),
+        "suspend_reason": user.get("suspend_reason"),
+    }
 
 
 def get_current_user(
@@ -428,13 +467,10 @@ def get_current_user(
     user = cursor.fetchone()
     if user is None:
         raise HTTPException(status_code=404, detail="존재하지 않는 사용자입니다.")
-    user_dict = dict(user)
-    if user_dict.get("timeout_until") and datetime.now().isoformat() < user_dict["timeout_until"]:
-        raise HTTPException(
-            status_code=403,
-            detail=f"신고 누적으로 이용 정지 상태입니다. (~{user_dict['timeout_until'][:16]})",
-        )
-    return user_dict
+    user = dict(user)
+    if user.get("timeout_until") and datetime.now().isoformat() < user["timeout_until"]:
+        raise HTTPException(status_code=403, detail=f"정지된 계정입니다. 사유: {user.get('suspend_reason') or '관리자 정지'}")
+    return user
 
 
 def require_admin(user: dict = Depends(get_current_user)):
@@ -465,52 +501,54 @@ def ensure_can_write_board(board: dict, user: dict):
     grade_map = {"grade_1": 1, "grade_2": 2, "grade_3": 3}
     if board["type"] in grade_map and user["grade"] != grade_map[board["type"]]:
         raise HTTPException(status_code=403, detail=f"{grade_map[board['type']]}학년만 작성할 수 있습니다.")
-
-
-@app.get("/api/health")
-def health():
-    return {
-        "ok": True,
-        "database": "sqlite",
-        "persistent_on_vercel": not bool(os.getenv("VERCEL")),
-    }
+    if board["type"] == "notice" and user["role"] != "admin" and not user.get("can_post_notice"):
+        raise HTTPException(status_code=403, detail="공지 작성 권한이 없습니다.")
 
 
 @app.get("/")
 def serve_index():
-    if not INDEX_FILE.exists():
-        raise HTTPException(status_code=404, detail="index.html을 찾을 수 없습니다.")
     return FileResponse(INDEX_FILE)
 
 
-@app.post("/api/auth/google")
-def google_auth(data: GoogleAuthInput, conn: DbConnection = Depends(get_db)):
-    verify_school_account(data)
-    role = "admin" if data.email in ADMIN_EMAILS else "student"
+@app.get("/admin")
+def serve_admin():
+    return FileResponse(ADMIN_FILE)
+
+
+@app.get("/api/health")
+def health():
+    return {"ok": True, "database": DB_KIND}
+
+
+@app.post("/api/auth/signup")
+def signup(data: SignupInput, conn: DbConnection = Depends(get_db)):
+    cursor = conn.cursor()
+    cursor.execute("SELECT user_id FROM users WHERE email = ?", (data.email,))
+    if cursor.fetchone():
+        raise HTTPException(status_code=409, detail="이미 가입된 이메일입니다.")
+    cursor.execute(
+        """
+        INSERT INTO users (email, name, grade, password_hash, role, can_post_notice)
+        VALUES (?, ?, ?, ?, 'student', 0)
+        """,
+        (data.email, data.name, data.grade, hash_password(data.password)),
+    )
+    conn.commit()
+    cursor.execute("SELECT * FROM users WHERE user_id = ?", (cursor.lastrowid,))
+    return public_user(dict(cursor.fetchone()))
+
+
+@app.post("/api/auth/login")
+def login(data: LoginInput, conn: DbConnection = Depends(get_db)):
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM users WHERE email = ?", (data.email,))
     user = cursor.fetchone()
-    if user is None:
-        cursor.execute(
-            "INSERT INTO users (email, name, grade, role) VALUES (?, ?, ?, ?)",
-            (data.email, data.name.strip(), data.grade, role),
-        )
-        conn.commit()
-        return {
-            "user_id": cursor.lastrowid,
-            "email": data.email,
-            "name": data.name.strip(),
-            "grade": data.grade,
-            "role": role,
-        }
-
-    cursor.execute(
-        "UPDATE users SET name = ?, grade = ?, role = ? WHERE email = ?",
-        (data.name.strip(), data.grade, role, data.email),
-    )
-    conn.commit()
-    cursor.execute("SELECT * FROM users WHERE email = ?", (data.email,))
-    return dict(cursor.fetchone())
+    if user is None or not verify_password(data.password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="이메일 또는 비밀번호가 올바르지 않습니다.")
+    user = dict(user)
+    if user.get("timeout_until") and datetime.now().isoformat() < user["timeout_until"]:
+        raise HTTPException(status_code=403, detail=f"정지된 계정입니다. 사유: {user.get('suspend_reason') or '관리자 정지'}")
+    return public_user(user)
 
 
 @app.get("/api/boards")
@@ -520,31 +558,8 @@ def get_boards(conn: DbConnection = Depends(get_db)):
     return [dict(row) for row in cursor.fetchall()]
 
 
-@app.post("/api/posts")
-def create_post(
-    data: PostCreateInput,
-    user: dict = Depends(get_current_user),
-    conn: DbConnection = Depends(get_db),
-):
-    cursor = conn.cursor()
-    board = get_board_or_404(cursor, data.board_id)
-    ensure_can_write_board(board, user)
-    cursor.execute(
-        """
-        INSERT INTO posts (board_id, user_id, title, content, is_anonymous)
-        VALUES (?, ?, ?, ?, ?)
-        """,
-        (data.board_id, user["user_id"], data.title, data.content, int(data.is_anonymous)),
-    )
-    conn.commit()
-    return {"message": "게시글이 등록되었습니다.", "post_id": cursor.lastrowid}
-
-
 @app.get("/api/posts")
-def search_posts(
-    q: str = Query("", max_length=100),
-    conn: DbConnection = Depends(get_db),
-):
+def search_posts(q: str = Query("", max_length=100), conn: DbConnection = Depends(get_db)):
     cursor = conn.cursor()
     keyword = f"%{q.strip()}%"
     cursor.execute(
@@ -564,7 +579,6 @@ def search_posts(
 
 
 @app.get("/api/boards/{board_id}/posts")
-@app.get("/api/posts/{board_id}")
 def get_posts(board_id: int, conn: DbConnection = Depends(get_db)):
     cursor = conn.cursor()
     get_board_or_404(cursor, board_id)
@@ -589,23 +603,27 @@ def serialize_post(row):
     return post
 
 
+@app.post("/api/posts")
+def create_post(data: PostCreateInput, user: dict = Depends(get_current_user), conn: DbConnection = Depends(get_db)):
+    cursor = conn.cursor()
+    board = get_board_or_404(cursor, data.board_id)
+    ensure_can_write_board(board, user)
+    cursor.execute(
+        "INSERT INTO posts (board_id, user_id, title, content, is_anonymous) VALUES (?, ?, ?, ?, ?)",
+        (data.board_id, user["user_id"], data.title, data.content, int(data.is_anonymous)),
+    )
+    conn.commit()
+    return {"message": "게시글이 등록되었습니다.", "post_id": cursor.lastrowid}
+
+
 @app.put("/api/posts/{post_id}")
-def update_post(
-    post_id: int,
-    data: PostUpdateInput,
-    user: dict = Depends(get_current_user),
-    conn: DbConnection = Depends(get_db),
-):
+def update_post(post_id: int, data: PostUpdateInput, user: dict = Depends(get_current_user), conn: DbConnection = Depends(get_db)):
     cursor = conn.cursor()
     post = get_post_or_404(cursor, post_id)
     if post["user_id"] != user["user_id"] and user["role"] != "admin":
         raise HTTPException(status_code=403, detail="게시글 수정 권한이 없습니다.")
     cursor.execute(
-        """
-        UPDATE posts
-        SET title = ?, content = ?, is_anonymous = ?, updated_at = ?
-        WHERE post_id = ?
-        """,
+        "UPDATE posts SET title = ?, content = ?, is_anonymous = ?, updated_at = ? WHERE post_id = ?",
         (data.title, data.content, int(data.is_anonymous), datetime.now().isoformat(), post_id),
     )
     conn.commit()
@@ -613,11 +631,7 @@ def update_post(
 
 
 @app.delete("/api/posts/{post_id}")
-def delete_post(
-    post_id: int,
-    user: dict = Depends(get_current_user),
-    conn: DbConnection = Depends(get_db),
-):
+def delete_post(post_id: int, user: dict = Depends(get_current_user), conn: DbConnection = Depends(get_db)):
     cursor = conn.cursor()
     post = get_post_or_404(cursor, post_id)
     if post["user_id"] != user["user_id"] and user["role"] != "admin":
@@ -628,23 +642,13 @@ def delete_post(
 
 
 @app.post("/api/posts/{post_id}/like")
-def like_post(
-    post_id: int,
-    user: dict = Depends(get_current_user),
-    conn: DbConnection = Depends(get_db),
-):
+def like_post(post_id: int, user: dict = Depends(get_current_user), conn: DbConnection = Depends(get_db)):
     cursor = conn.cursor()
     get_post_or_404(cursor, post_id)
-    cursor.execute(
-        "SELECT post_id FROM post_likes WHERE post_id = ? AND user_id = ?",
-        (post_id, user["user_id"]),
-    )
+    cursor.execute("SELECT post_id FROM post_likes WHERE post_id = ? AND user_id = ?", (post_id, user["user_id"]))
     if cursor.fetchone():
         raise HTTPException(status_code=409, detail="이미 좋아요를 눌렀습니다.")
-    cursor.execute(
-        "INSERT INTO post_likes (post_id, user_id) VALUES (?, ?)",
-        (post_id, user["user_id"]),
-    )
+    cursor.execute("INSERT INTO post_likes (post_id, user_id) VALUES (?, ?)", (post_id, user["user_id"]))
     cursor.execute(
         "UPDATE posts SET like_count = (SELECT COUNT(*) FROM post_likes WHERE post_id = ?) WHERE post_id = ?",
         (post_id, post_id),
@@ -654,11 +658,7 @@ def like_post(
 
 
 @app.post("/api/comments")
-def create_comment(
-    data: CommentCreateInput,
-    user: dict = Depends(get_current_user),
-    conn: DbConnection = Depends(get_db),
-):
+def create_comment(data: CommentCreateInput, user: dict = Depends(get_current_user), conn: DbConnection = Depends(get_db)):
     cursor = conn.cursor()
     get_post_or_404(cursor, data.post_id)
     cursor.execute(
@@ -683,21 +683,17 @@ def get_comments(post_id: int, conn: DbConnection = Depends(get_db)):
         """,
         (post_id,),
     )
-    result = []
+    comments = []
     for row in cursor.fetchall():
         comment = dict(row)
         if comment["is_anonymous"] == 1:
             comment["author_name"] = "익명"
-        result.append(comment)
-    return result
+        comments.append(comment)
+    return comments
 
 
 @app.delete("/api/comments/{comment_id}")
-def delete_comment(
-    comment_id: int,
-    user: dict = Depends(get_current_user),
-    conn: DbConnection = Depends(get_db),
-):
+def delete_comment(comment_id: int, user: dict = Depends(get_current_user), conn: DbConnection = Depends(get_db)):
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM comments WHERE comment_id = ?", (comment_id,))
     comment = cursor.fetchone()
@@ -711,81 +707,102 @@ def delete_comment(
     return {"message": "댓글이 삭제되었습니다."}
 
 
-@app.post("/api/boards/club")
-def create_club(
-    data: ClubCreateInput,
-    user: dict = Depends(get_current_user),
-    conn: DbConnection = Depends(get_db),
-):
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT board_id FROM boards WHERE type = 'club' AND club_name = ?",
-        (data.club_name,),
-    )
-    if cursor.fetchone():
-        raise HTTPException(status_code=409, detail="이미 같은 이름의 소모임이 있습니다.")
-    cursor.execute(
-        "INSERT INTO boards (type, club_name, is_approved) VALUES ('club', ?, 0)",
-        (data.club_name,),
-    )
-    conn.commit()
-    return {"message": "소모임 개설 요청이 접수되었습니다.", "board_id": cursor.lastrowid}
-
-
 @app.post("/api/posts/{post_id}/report")
-def report_post(
-    post_id: int,
-    data: ReportInput,
-    user: dict = Depends(get_current_user),
-    conn: DbConnection = Depends(get_db),
-):
+def report_post(post_id: int, data: ReportInput, user: dict = Depends(get_current_user), conn: DbConnection = Depends(get_db)):
     cursor = conn.cursor()
     post = get_post_or_404(cursor, post_id)
     if post["user_id"] == user["user_id"]:
         raise HTTPException(status_code=400, detail="본인 글은 신고할 수 없습니다.")
-    cursor.execute(
-        "SELECT report_id FROM reports WHERE post_id = ? AND user_id = ?",
-        (post_id, user["user_id"]),
-    )
+    cursor.execute("SELECT report_id FROM reports WHERE post_id = ? AND user_id = ?", (post_id, user["user_id"]))
     if cursor.fetchone():
         raise HTTPException(status_code=409, detail="이미 신고한 게시글입니다.")
-    cursor.execute(
-        "INSERT INTO reports (post_id, user_id, reason) VALUES (?, ?, ?)",
-        (post_id, user["user_id"], data.reason),
-    )
+    cursor.execute("INSERT INTO reports (post_id, user_id, reason) VALUES (?, ?, ?)", (post_id, user["user_id"], data.reason))
+    conn.commit()
+    return {"message": "신고가 접수되었습니다."}
 
+
+@app.post("/api/boards/club")
+def create_club(data: ClubCreateInput, user: dict = Depends(get_current_user), conn: DbConnection = Depends(get_db)):
+    cursor = conn.cursor()
+    cursor.execute("SELECT board_id FROM boards WHERE type = 'club' AND club_name = ?", (data.club_name,))
+    if cursor.fetchone():
+        raise HTTPException(status_code=409, detail="이미 같은 이름의 소모임이 있습니다.")
+    cursor.execute("INSERT INTO boards (type, club_name, is_approved) VALUES ('club', ?, 0)", (data.club_name,))
+    conn.commit()
+    return {"message": "소모임 개설 요청이 접수되었습니다.", "board_id": cursor.lastrowid}
+
+
+@app.get("/api/admin/users")
+def admin_users(_: dict = Depends(require_admin), conn: DbConnection = Depends(get_db)):
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users ORDER BY user_id")
+    return [public_user(dict(row)) for row in cursor.fetchall()]
+
+
+@app.patch("/api/admin/users/{user_id}/notice-permission")
+def set_notice_permission(user_id: int, data: NoticePermissionInput, _: dict = Depends(require_admin), conn: DbConnection = Depends(get_db)):
+    cursor = conn.cursor()
+    cursor.execute("UPDATE users SET can_post_notice = ? WHERE user_id = ?", (int(data.can_post_notice), user_id))
+    conn.commit()
+    return {"message": "공지 권한이 변경되었습니다."}
+
+
+@app.post("/api/admin/users/{user_id}/suspend")
+def suspend_user(user_id: int, data: SuspendInput, admin: dict = Depends(require_admin), conn: DbConnection = Depends(get_db)):
+    if user_id == admin["user_id"]:
+        raise HTTPException(status_code=400, detail="본인 계정은 정지할 수 없습니다.")
+    until_time = (datetime.now() + timedelta(days=data.days)).isoformat()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE users SET timeout_until = ?, suspend_reason = ? WHERE user_id = ?",
+        (until_time, data.reason, user_id),
+    )
+    conn.commit()
+    return {"message": "계정이 정지되었습니다.", "timeout_until": until_time}
+
+
+@app.post("/api/admin/users/{user_id}/unsuspend")
+def unsuspend_user(user_id: int, _: dict = Depends(require_admin), conn: DbConnection = Depends(get_db)):
+    cursor = conn.cursor()
+    cursor.execute("UPDATE users SET timeout_until = NULL, suspend_reason = NULL WHERE user_id = ?", (user_id,))
+    conn.commit()
+    return {"message": "계정 정지가 해제되었습니다."}
+
+
+@app.get("/api/admin/reports")
+def admin_reports(_: dict = Depends(require_admin), conn: DbConnection = Depends(get_db)):
+    cursor = conn.cursor()
     cursor.execute(
         """
-        SELECT COUNT(*)
-        FROM reports
-        WHERE post_id IN (SELECT post_id FROM posts WHERE user_id = ?)
-        """,
-        (post["user_id"],),
+        SELECT r.*, p.title as post_title, p.user_id as target_user_id,
+               reporter.email as reporter_email, target.email as target_email
+        FROM reports r
+        JOIN posts p ON r.post_id = p.post_id
+        JOIN users reporter ON r.user_id = reporter.user_id
+        JOIN users target ON p.user_id = target.user_id
+        ORDER BY r.created_at DESC
+        """
     )
-    report_count = cursor.fetchone()[0]
-    if report_count >= 3:
-        until_time = (datetime.now() + timedelta(days=1)).isoformat()
-        cursor.execute("UPDATE users SET timeout_until = ? WHERE user_id = ?", (until_time, post["user_id"]))
+    return [dict(row) for row in cursor.fetchall()]
+
+
+@app.post("/api/admin/reports/{report_id}/resolve")
+def resolve_report(report_id: int, _: dict = Depends(require_admin), conn: DbConnection = Depends(get_db)):
+    cursor = conn.cursor()
+    cursor.execute("UPDATE reports SET status = 'resolved' WHERE report_id = ?", (report_id,))
     conn.commit()
-    return {"message": f"신고가 접수되었습니다. 작성자 누적 신고: {report_count}회"}
+    return {"message": "신고가 처리되었습니다."}
 
 
 @app.get("/api/admin/pending-clubs")
-def get_pending_clubs(
-    _: dict = Depends(require_admin),
-    conn: DbConnection = Depends(get_db),
-):
+def get_pending_clubs(_: dict = Depends(require_admin), conn: DbConnection = Depends(get_db)):
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM boards WHERE is_approved = 0 ORDER BY board_id")
     return [dict(row) for row in cursor.fetchall()]
 
 
 @app.post("/api/admin/boards/{board_id}/approve")
-def approve_board(
-    board_id: int,
-    _: dict = Depends(require_admin),
-    conn: DbConnection = Depends(get_db),
-):
+def approve_board(board_id: int, _: dict = Depends(require_admin), conn: DbConnection = Depends(get_db)):
     cursor = conn.cursor()
     get_board_or_404(cursor, board_id)
     cursor.execute("UPDATE boards SET is_approved = 1 WHERE board_id = ?", (board_id,))

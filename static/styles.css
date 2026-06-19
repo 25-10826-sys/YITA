@@ -134,6 +134,43 @@ header {
     padding: 0 20px;
 }
 
+.admin-wrapper {
+    margin: 24px auto;
+    max-width: 1180px;
+    padding: 0 20px;
+}
+
+.admin-grid {
+    display: grid;
+    gap: 16px;
+    grid-template-columns: 1fr;
+}
+
+.admin-row {
+    align-items: center;
+    border-bottom: 1px solid #f1f1f1;
+    display: flex;
+    gap: 14px;
+    justify-content: space-between;
+    padding: 10px 0;
+}
+
+.admin-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: flex-end;
+}
+
+.admin-actions button,
+.admin-row > button,
+#refresh-admin-button {
+    background: #fafafa;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 5px 9px;
+}
+
 .left-sidebar,
 .center-content,
 .right-sidebar {
@@ -201,6 +238,17 @@ textarea {
     font-weight: 700;
     margin-top: 10px;
     padding: 10px;
+    width: 100%;
+}
+
+.btn-sub-login {
+    background: #fff;
+    border: 1px solid #c62917;
+    border-radius: 5px;
+    color: #c62917;
+    font-weight: 700;
+    margin-top: 8px;
+    padding: 9px;
     width: 100%;
 }
 
@@ -279,6 +327,38 @@ textarea {
     align-items: center;
     display: flex;
     justify-content: space-between;
+}
+
+.board-toolbar {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.board-toolbar button {
+    background: #fafafa;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    color: #555;
+    padding: 5px 9px;
+}
+
+.post-snippet {
+    color: #555;
+    display: -webkit-box;
+    font-size: 13px;
+    line-height: 1.45;
+    margin-top: 4px;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+}
+
+.article-content {
+    color: #333;
+    line-height: 1.65;
+    margin-top: 10px;
+    white-space: pre-wrap;
 }
 
 .board-list-header span {

@@ -21,6 +21,7 @@
                 <a href="#schedule">시간표</a>
                 <a href="#meal">급식</a>
                 <a href="#career">진로</a>
+                <a href="/admin">관리자</a>
             </nav>
             <button class="nav-auth-btn" id="top-login-indicator" type="button">로그인 필요</button>
         </div>
@@ -70,6 +71,10 @@
                     <input type="email" id="u-email" value="student@yisunsin.cnehs.kr" autocomplete="email">
                 </label>
                 <label>
+                    비밀번호
+                    <input type="password" id="u-password" autocomplete="current-password">
+                </label>
+                <label>
                     이름
                     <input type="text" id="u-name" value="이순신" maxlength="30">
                 </label>
@@ -82,7 +87,8 @@
                     </select>
                 </label>
                 <button class="btn-red-login" id="login-button" type="button">로그인</button>
-                <p class="hint">실서비스에서는 Google Identity Services 토큰을 백엔드에서 검증합니다.</p>
+                <button class="btn-sub-login" id="signup-button" type="button">회원가입</button>
+                <p class="hint">관리자 기본 계정: admin / pol357000**</p>
             </section>
 
             <section class="profile-card" id="profile-card" hidden>
@@ -121,6 +127,10 @@
                 <div class="board-list-header">
                     <h2 id="post-list-title">전체 게시판</h2>
                     <span id="post-list-count">0개</span>
+                </div>
+                <div class="board-toolbar">
+                    <button id="refresh-board-button" type="button">새로고침</button>
+                    <button id="back-list-button" type="button">목록 보기</button>
                 </div>
                 <div id="post-list" class="post-list muted">로그인 후 게시글을 볼 수 있습니다.</div>
             </section>

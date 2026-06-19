@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YITA 관리자</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <header>
+        <div class="nav-top">
+            <div class="logo-area">
+                <div class="logo-icon" aria-hidden="true"></div>
+                <div>
+                    <div class="logo-text">YITA Admin</div>
+                    <div class="logo-sub">계정 · 신고 · 공지 권한 관리</div>
+                </div>
+            </div>
+            <nav class="nav-menu" aria-label="관리자 메뉴">
+                <a href="/">커뮤니티</a>
+                <a class="active" href="/admin">관리자</a>
+            </nav>
+            <button class="nav-auth-btn" id="admin-state" type="button">관리자 로그인 필요</button>
+        </div>
+    </header>
+
+    <main class="admin-wrapper">
+        <section class="login-card" id="admin-login-card">
+            <h2>관리자 로그인</h2>
+            <p>기본 계정은 <strong>admin</strong>, 비밀번호는 <strong>pol357000**</strong>입니다.</p>
+            <label>
+                이메일 또는 admin
+                <input type="text" id="admin-email" value="admin">
+            </label>
+            <label>
+                비밀번호
+                <input type="password" id="admin-password" value="pol357000**">
+            </label>
+            <button class="btn-red-login" id="admin-login-button" type="button">관리자 로그인</button>
+        </section>
+
+        <section class="admin-grid" id="admin-dashboard" hidden>
+            <section class="right-card">
+                <div class="board-list-header">
+                    <h2>회원 관리</h2>
+                    <button id="refresh-admin-button" type="button">새로고침</button>
+                </div>
+                <div id="admin-users" class="admin-table muted">회원 목록을 불러오는 중입니다.</div>
+            </section>
+
+            <section class="right-card">
+                <h2>신고 관리</h2>
+                <div id="admin-reports" class="admin-table muted">신고 목록을 불러오는 중입니다.</div>
+            </section>
+
+            <section class="right-card">
+                <h2>소모임 승인</h2>
+                <div id="admin-clubs" class="admin-table muted">대기 중인 소모임이 없습니다.</div>
+            </section>
+        </section>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+    <script src="/static/admin.js" defer></script>
+</body>
+</html>

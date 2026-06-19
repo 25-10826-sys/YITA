@@ -1,35 +1,43 @@
 # YITA
 
-이순신고 학생 커뮤니티 MVP입니다. 프론트엔드는 정적 파일, 백엔드는 FastAPI 서버리스 API로 분리했습니다.
+이순신고 학생 커뮤니티 MVP입니다. Vercel 배포를 고려해 정적 프론트와 FastAPI API를 분리했습니다.
 
-## 구조
-
-- `index.html`: 화면 마크업
-- `static/app.js`: 브라우저 동작, API 호출, XSS 방지를 위한 DOM 기반 렌더링
-- `static/styles.css`: 화면 스타일
-- `api/index.py`: Vercel Python 서버리스용 FastAPI 앱
-- `YSS.py`: 로컬 개발용 실행 진입점
-- `vercel.json`: Vercel 라우팅 설정
-
-## 로컬 실행
+## 실행
 
 ```bash
 pip install -r requirements.txt
 python YSS.py
 ```
 
-브라우저에서 `http://127.0.0.1:8000`을 열면 됩니다.
+- 커뮤니티: `http://127.0.0.1:8000`
+- 관리자: `http://127.0.0.1:8000/admin`
 
-## 환경 변수
+## 기본 관리자
 
-- `SCHOOL_EMAIL_DOMAIN`: 허용할 학교 이메일 도메인, 기본값 `yisunsin.cnehs.kr`
-- `ADMIN_EMAILS`: 관리자 이메일 목록, 쉼표로 구분
-- `GOOGLE_CLIENT_ID`: 실제 Google Identity Services 토큰 검증 시 필요
-- `CORS_ORIGINS`: 허용 origin 목록, 기본값 `*`
-- `DATABASE_PATH`: 로컬 SQLite 파일 경로
+- 이메일 입력칸: `admin`
+- 비밀번호: `pol357000**`
+- 실제 이메일: `admin@yisunsin.cnehs.kr`
 
-## Vercel 주의사항
+배포 시에는 Vercel 환경 변수 `ADMIN_PASSWORD`로 바꾸는 것을 권장합니다.
 
-현재 API는 SQLite를 사용합니다. Vercel 서버리스 환경에서는 파일 시스템이 영구 저장소가 아니므로 `/tmp` 데이터는 재배포/콜드스타트에 따라 사라질 수 있습니다.
+## Vercel 환경 변수
 
-실서비스로 운영하려면 Neon, Supabase, Vercel Postgres 같은 외부 DB로 교체해야 합니다. 지금 구조는 `/api` 서버리스 진입점과 정적 프론트 분리를 끝낸 상태라 DB 어댑터만 바꾸면 배포 구조는 유지할 수 있습니다.
+- `DATABASE_URL`: Postgres 연결 문자열. Neon, Supabase, Vercel Postgres 모두 가능
+- `SCHOOL_EMAIL_DOMAIN`: 학교 이메일 도메인, 기본값 `yisunsin.cnehs.kr`
+- `DEFAULT_ADMIN_EMAIL`: 관리자 이메일, 기본값 `admin@yisunsin.cnehs.kr`
+- `ADMIN_PASSWORD`: 관리자 비밀번호, 기본값 `pol357000**`
+- `CORS_ORIGINS`: 허용 origin, 기본값 `*`
+
+`DATABASE_URL`이 있으면 Postgres를 사용하고, 없으면 로컬 개발용 `database.sqlite`를 사용합니다.
+
+## 구현된 기능
+
+- 비밀번호 기반 회원가입/로그인
+- 게시판별 목록/상세/댓글/좋아요/신고
+- 공지 게시판 작성 권한 제한
+- 관리자 페이지 `/admin`
+- 관리자 회원 목록 조회
+- 특정 계정 공지 권한 부여/회수
+- 계정 정지/정지 해제
+- 신고 목록 조회/처리
+- 소모임 승인
