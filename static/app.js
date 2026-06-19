@@ -41,7 +41,7 @@ async function api(path, options = {}) {
     if (sessionUser) headers["user-id"] = sessionUser.user_id;
     if (options.body) headers["Content-Type"] = "application/json";
 
-    const response = await fetch(`${'postgres://postgres.epwscaboxplxmvwlumoc:FCcay3CA3ifurIGf@aws-1-us-east-1.pooler.supabase.com:6543/postgres?sslmode=require&pgbouncer=true'}${path}`, { ...options, headers });
+    const response = await fetch(`${BASE_API}${path}`, { ...options, headers });
     const data = (response.headers.get("content-type") || "").includes("application/json")
         ? await response.json()
         : null;

@@ -25,16 +25,17 @@ except Exception:
 SCHOOL_DOMAIN = os.getenv("SCHOOL_EMAIL_DOMAIN", "yisunsin.cnehs.kr")
 DEFAULT_ADMIN_EMAIL = os.getenv("DEFAULT_ADMIN_EMAIL", f"admin@{SCHOOL_DOMAIN}").lower()
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "pol357000**")
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATABASE_URL = (
     os.getenv("DATABASE_URL")
     or os.getenv("POSTGRES_URL")
     or os.getenv("POSTGRES_PRISMA_URL")
     or os.getenv("POSTGRES_URL_NON_POOLING")
 )
-DB_FILE = os.getenv("DATABASE_PATH", "database.sqlite")
 DB_KIND = "postgres" if DATABASE_URL else "sqlite"
+DEFAULT_SQLITE_PATH = Path(os.getenv("TMPDIR", "/tmp")) / "database.sqlite" if os.getenv("VERCEL") else PROJECT_ROOT / "database.sqlite"
+DB_FILE = os.getenv("DATABASE_PATH", str(DEFAULT_SQLITE_PATH))
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
 STATIC_DIR = PROJECT_ROOT / "static"
 INDEX_FILE = PROJECT_ROOT / "index.html"
 ADMIN_FILE = PROJECT_ROOT / "admin.html"
@@ -133,6 +134,7 @@ def get_connection():
             raise RuntimeError("DATABASE_URL을 사용하려면 psycopg[binary]가 필요합니다.")
         return DbConnection(psycopg.connect(DATABASE_URL, row_factory=dict_row))
 
+    Path(DB_FILE).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
