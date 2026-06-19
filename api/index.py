@@ -7,6 +7,7 @@ from pathlib import Path
 import sqlite3
 import traceback
 from typing import Optional
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,11 +23,42 @@ except Exception:
     dict_row = None
 
 
+def clean_postgres_url(url: Optional[str]) -> Optional[str]:
+    if not url:
+        return url
+    parsed = urlsplit(url)
+    if parsed.scheme not in {"postgres", "postgresql"}:
+        return url
+
+    allowed_query_keys = {
+        "application_name",
+        "channel_binding",
+        "connect_timeout",
+        "gssencmode",
+        "keepalives",
+        "keepalives_count",
+        "keepalives_idle",
+        "keepalives_interval",
+        "sslcert",
+        "sslcompression",
+        "sslcrl",
+        "sslkey",
+        "sslmode",
+        "sslrootcert",
+        "sslsni",
+        "target_session_attrs",
+    }
+    query = urlencode(
+        [(key, value) for key, value in parse_qsl(parsed.query, keep_blank_values=True) if key in allowed_query_keys]
+    )
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, query, parsed.fragment))
+
+
 SCHOOL_DOMAIN = os.getenv("SCHOOL_EMAIL_DOMAIN", "yisunsin.cnehs.kr")
 DEFAULT_ADMIN_EMAIL = os.getenv("DEFAULT_ADMIN_EMAIL", f"admin@{SCHOOL_DOMAIN}").lower()
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "pol357000**")
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DATABASE_URL = (
+DATABASE_URL = clean_postgres_url(
     os.getenv("DATABASE_URL")
     or os.getenv("POSTGRES_URL")
     or os.getenv("POSTGRES_PRISMA_URL")
@@ -132,7 +164,7 @@ def get_connection():
     if DB_KIND == "postgres":
         if psycopg is None:
             raise RuntimeError("DATABASE_URL을 사용하려면 psycopg[binary]가 필요합니다.")
-        return DbConnection(psycopg.connect(DATABASE_URL, row_factory=dict_row))
+        return DbConnection(psycopg.connect(DATABASE_URL, row_factory=dict_row, prepare_threshold=None))
 
     Path(DB_FILE).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_FILE)
