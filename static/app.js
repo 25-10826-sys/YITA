@@ -1,4 +1,4 @@
-const BASE_API = window.location.protocol === "file:" ? "http://127.0.0.1:8000/api" : "/api";
+const BASE_API = window.location.protocol === "file:" ? "https://epwscaboxplxmvwlumoc.supabase.co" : "/api";
 
 let sessionUser = null;
 let selectedBoardId = 1;
