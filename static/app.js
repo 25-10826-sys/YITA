@@ -36,16 +36,54 @@ function showToast(message) {
     }, 2600);
 }
 
-async function api(path, options = {}) {
-    const headers = { ...(options.headers || {}) };
-    if (sessionUser) headers["user-id"] = sessionUser.user_id;
-    if (options.body) headers["Content-Type"] = "application/json";
+const API_URL = "https://epwscaboxplxmvwlumoc.supabase.co";
 
-    const response = await fetch(`${BASE_API}${path}`, { ...options, headers });
-    const data = (response.headers.get("content-type") || "").includes("application/json")
+async function api(path, options = {}) {
+    const headers = {
+        ...(options.headers || {})
+    };
+
+    // 로그인 사용자 ID 추가
+    if (sessionUser) {
+        headers["user-id"] = sessionUser.user_id;
+    }
+
+    // JSON body일 때만 Content-Type 추가
+    if (
+        options.body &&
+        !(options.body instanceof FormData)
+    ) {
+        headers["Content-Type"] = "application/json";
+    }
+
+    let response;
+
+    try {
+        response = await fetch(`${API_URL}${path}`, {
+            ...options,
+            headers
+        });
+    } catch (error) {
+        throw new Error("서버에 연결할 수 없습니다.");
+    }
+
+
+    const contentType = response.headers.get("content-type") || "";
+
+    const data = contentType.includes("application/json")
         ? await response.json()
         : null;
-    if (!response.ok) throw new Error(data?.detail || data?.message || "요청에 실패했습니다.");
+
+
+    if (!response.ok) {
+        throw new Error(
+            data?.detail ||
+            data?.message ||
+            "요청에 실패했습니다."
+        );
+    }
+
+
     return data;
 }
 
