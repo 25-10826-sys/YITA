@@ -13,7 +13,7 @@
                 <div class="logo-icon" aria-hidden="true"></div>
                 <div>
                     <div class="logo-text">YITA Admin</div>
-                    <div class="logo-sub">계정 · 신고 · 공지 권한 관리</div>
+                    <div class="logo-sub">회원 · 신고 · 소모임 관리</div>
                 </div>
             </div>
             <nav class="nav-menu" aria-label="관리자 메뉴">
@@ -27,20 +27,27 @@
     <main class="admin-wrapper">
         <section class="login-card" id="admin-login-card">
             <h2>관리자 로그인</h2>
-            <p>기본 계정은 <strong>admin</strong>, 비밀번호는 <strong>pol357000**</strong>입니다.</p>
+            <p>관리자 계정으로 로그인하면 신고, 회원, 소모임을 관리할 수 있습니다.</p>
             <label>
                 이메일 또는 admin
                 <input type="text" id="admin-email" value="admin">
             </label>
             <label>
                 비밀번호
-                <input type="password" id="admin-password" value="pol357000**">
+                <input type="password" id="admin-password" autocomplete="current-password">
             </label>
-            <button class="btn-red-login" id="admin-login-button" type="button">관리자 로그인</button>
+            <button class="btn-red-login" id="admin-login-button" type="button">로그인</button>
         </section>
 
-        <section class="admin-grid" id="admin-dashboard" hidden>
-            <section class="right-card">
+        <section id="admin-dashboard" hidden>
+            <div class="tab-bar" role="tablist" aria-label="관리자 탭">
+                <button class="tab-button active" data-admin-tab="users" type="button">회원 관리</button>
+                <button class="tab-button" data-admin-tab="reported" type="button">신고받은 계정</button>
+                <button class="tab-button" data-admin-tab="reports" type="button">신고 목록</button>
+                <button class="tab-button" data-admin-tab="clubs" type="button">소모임 관리</button>
+            </div>
+
+            <section class="right-card admin-panel" id="admin-tab-users">
                 <div class="board-list-header">
                     <h2>회원 관리</h2>
                     <button id="refresh-admin-button" type="button">새로고침</button>
@@ -48,14 +55,21 @@
                 <div id="admin-users" class="admin-table muted">회원 목록을 불러오는 중입니다.</div>
             </section>
 
-            <section class="right-card">
-                <h2>신고 관리</h2>
+            <section class="right-card admin-panel" id="admin-tab-reported" hidden>
+                <h2>신고받은 계정 상세</h2>
+                <p class="hint">신고받은 계정 정보와 신고된 글의 제목/본문/신고 사유를 함께 확인합니다.</p>
+                <div id="admin-reported-users" class="admin-table muted">신고받은 계정이 없습니다.</div>
+            </section>
+
+            <section class="right-card admin-panel" id="admin-tab-reports" hidden>
+                <h2>신고 목록</h2>
                 <div id="admin-reports" class="admin-table muted">신고 목록을 불러오는 중입니다.</div>
             </section>
 
-            <section class="right-card">
-                <h2>소모임 승인</h2>
-                <div id="admin-clubs" class="admin-table muted">대기 중인 소모임이 없습니다.</div>
+            <section class="right-card admin-panel" id="admin-tab-clubs" hidden>
+                <h2>소모임 관리</h2>
+                <p class="hint">대기 중인 소모임은 승인하거나 삭제할 수 있습니다. 승인된 소모임도 삭제할 수 있습니다.</p>
+                <div id="admin-clubs" class="admin-table muted">소모임 목록을 불러오는 중입니다.</div>
             </section>
         </section>
     </main>

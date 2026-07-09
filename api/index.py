@@ -943,8 +943,12 @@ def admin_reports(_: dict = Depends(require_admin), conn: DbConnection = Depends
     cursor = conn.cursor()
     cursor.execute(
         """
-        SELECT r.*, p.title as post_title, p.user_id as target_user_id,
-               reporter.email as reporter_email, target.email as target_email
+        SELECT r.*, p.title as post_title, p.content as post_content, p.created_at as post_created_at,
+               p.user_id as target_user_id, p.board_id as board_id,
+               reporter.email as reporter_email, reporter.name as reporter_name,
+               target.email as target_email, target.name as target_name, target.grade as target_grade,
+               target.role as target_role, target.can_post_notice as target_can_post_notice,
+               target.timeout_until as target_timeout_until, target.suspend_reason as target_suspend_reason
         FROM reports r
         JOIN posts p ON r.post_id = p.post_id
         JOIN users reporter ON r.user_id = reporter.user_id
@@ -953,6 +957,43 @@ def admin_reports(_: dict = Depends(require_admin), conn: DbConnection = Depends
         """
     )
     return [dict(row) for row in cursor.fetchall()]
+
+
+@app.get("/api/admin/reported-users")
+def admin_reported_users(_: dict = Depends(require_admin), conn: DbConnection = Depends(get_db)):
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT target.user_id, target.email, target.name, target.grade, target.role,
+               target.can_post_notice, target.timeout_until, target.suspend_reason,
+               COUNT(r.report_id) as report_count,
+               MAX(r.created_at) as latest_reported_at
+        FROM reports r
+        JOIN posts p ON r.post_id = p.post_id
+        JOIN users target ON p.user_id = target.user_id
+        GROUP BY target.user_id, target.email, target.name, target.grade, target.role,
+                 target.can_post_notice, target.timeout_until, target.suspend_reason
+        ORDER BY report_count DESC, latest_reported_at DESC
+        """
+    )
+    users = []
+    for row in cursor.fetchall():
+        user = dict(row)
+        cursor.execute(
+            """
+            SELECT r.*, p.title as post_title, p.content as post_content, p.created_at as post_created_at,
+                   p.post_id, p.board_id, reporter.email as reporter_email, reporter.name as reporter_name
+            FROM reports r
+            JOIN posts p ON r.post_id = p.post_id
+            JOIN users reporter ON r.user_id = reporter.user_id
+            WHERE p.user_id = ?
+            ORDER BY r.created_at DESC
+            """,
+            (user["user_id"],),
+        )
+        user["reports"] = [dict(report) for report in cursor.fetchall()]
+        users.append(user)
+    return users
 
 
 @app.post("/api/admin/reports/{report_id}/resolve")
@@ -977,3 +1018,18 @@ def approve_board(board_id: int, _: dict = Depends(require_admin), conn: DbConne
     cursor.execute("UPDATE boards SET is_approved = 1 WHERE board_id = ?", (board_id,))
     conn.commit()
     return {"message": "소모임이 승인되었습니다."}
+
+
+@app.delete("/api/admin/boards/{board_id}")
+def delete_board(board_id: int, _: dict = Depends(require_admin), conn: DbConnection = Depends(get_db)):
+    cursor = conn.cursor()
+    board = get_board_or_404(cursor, board_id)
+    if board["type"] != "club":
+        raise HTTPException(status_code=400, detail="소모임 게시판만 삭제할 수 있습니다.")
+    cursor.execute("DELETE FROM comments WHERE post_id IN (SELECT post_id FROM posts WHERE board_id = ?)", (board_id,))
+    cursor.execute("DELETE FROM post_likes WHERE post_id IN (SELECT post_id FROM posts WHERE board_id = ?)", (board_id,))
+    cursor.execute("DELETE FROM reports WHERE post_id IN (SELECT post_id FROM posts WHERE board_id = ?)", (board_id,))
+    cursor.execute("DELETE FROM posts WHERE board_id = ?", (board_id,))
+    cursor.execute("DELETE FROM boards WHERE board_id = ?", (board_id,))
+    conn.commit()
+    return {"message": "소모임이 삭제되었습니다."}

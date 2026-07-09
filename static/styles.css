@@ -134,6 +134,10 @@ header {
     padding: 0 20px;
 }
 
+.community-layout {
+    align-items: start;
+}
+
 .admin-wrapper {
     margin: 24px auto;
     max-width: 1180px;
@@ -144,6 +148,28 @@ header {
     display: grid;
     gap: 16px;
     grid-template-columns: 1fr;
+}
+
+.tab-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.tab-button {
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 999px;
+    color: #555;
+    font-weight: 700;
+    padding: 8px 14px;
+}
+
+.tab-button.active {
+    background: #c62917;
+    border-color: #c62917;
+    color: #fff;
 }
 
 .admin-row {
@@ -169,6 +195,26 @@ header {
     border: 1px solid #ddd;
     border-radius: 4px;
     padding: 5px 9px;
+}
+
+.admin-panel {
+    margin-bottom: 16px;
+}
+
+.admin-subsection {
+    border-top: 1px solid #eee;
+    padding: 12px 0;
+}
+
+.admin-subsection:first-child {
+    border-top: 0;
+    padding-top: 0;
+}
+
+.admin-subsection h3,
+.report-user-card h3 {
+    font-size: 14px;
+    margin-bottom: 8px;
 }
 
 .left-sidebar,
@@ -299,6 +345,66 @@ textarea {
     opacity: 0.9;
 }
 
+.board-directory {
+    background: #fff;
+    border: 1px solid #e3e3e3;
+    border-radius: 6px;
+    padding: 16px;
+}
+
+.board-directory-grid {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.board-entry-card {
+    background: #fff;
+    border: 1px solid #e6e6e6;
+    border-radius: 8px;
+    min-height: 110px;
+    padding: 14px;
+    text-align: left;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.board-entry-card:hover {
+    border-color: #c62917;
+    box-shadow: 0 8px 18px rgba(198, 41, 23, 0.08);
+    transform: translateY(-1px);
+}
+
+.board-entry-card strong {
+    color: #c62917;
+    display: block;
+    font-size: 15px;
+    margin-bottom: 8px;
+}
+
+.board-entry-card span {
+    color: #555;
+    display: block;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.board-entry-card small {
+    color: #aaa;
+    display: block;
+    font-size: 11px;
+    margin-top: 10px;
+}
+
+.text-button {
+    background: transparent;
+    border: 0;
+    color: #c62917;
+    font-size: 12px;
+    font-weight: 700;
+    margin-bottom: 6px;
+    padding: 0;
+}
+
 .write-panel-bottom {
     align-items: center;
     display: flex;
@@ -398,6 +504,25 @@ textarea {
     margin-top: 4px;
 }
 
+.button-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.button-list button {
+    background: transparent;
+    border: 0;
+    color: #444;
+    font-size: 13px;
+    text-align: left;
+}
+
+.button-list button:hover {
+    color: #c62917;
+    text-decoration: underline;
+}
+
 .board-grid-box {
     display: grid;
     gap: 16px;
@@ -467,6 +592,37 @@ textarea {
     color: #c62917;
 }
 
+.report-user-card {
+    border: 1px solid #eee;
+    border-radius: 8px;
+    margin-bottom: 14px;
+    padding: 14px;
+}
+
+.report-user-header {
+    align-items: start;
+    display: flex;
+    gap: 12px;
+    justify-content: space-between;
+}
+
+.reported-post-box {
+    background: #fafafa;
+    border: 1px solid #eee;
+    border-radius: 6px;
+    margin-top: 10px;
+    padding: 10px;
+}
+
+.reported-post-content {
+    color: #444;
+    font-size: 13px;
+    line-height: 1.5;
+    margin-top: 6px;
+    max-width: 760px;
+    white-space: pre-wrap;
+}
+
 .toast {
     background: rgba(0, 0, 0, 0.82);
     border-radius: 999px;
@@ -503,5 +659,15 @@ textarea {
 
     .board-grid-box {
         grid-template-columns: 1fr;
+    }
+
+    .board-directory-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .admin-row,
+    .report-user-header {
+        align-items: stretch;
+        flex-direction: column;
     }
 }
