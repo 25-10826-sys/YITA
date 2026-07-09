@@ -1,5 +1,7 @@
 const BASE_API = window.location.protocol === "file:" ? "http://127.0.0.1:8000/api" : "/api";
+const TOKEN_KEY = "yita_auth_token";
 
+let authToken = localStorage.getItem(TOKEN_KEY);
 let sessionUser = null;
 let selectedBoardId = 1;
 let currentBoards = [];
@@ -38,15 +40,30 @@ function showToast(message) {
 
 async function api(path, options = {}) {
     const headers = { ...(options.headers || {}) };
-    if (sessionUser) headers["user-id"] = sessionUser.user_id;
+    if (authToken) headers.Authorization = `Bearer ${authToken}`;
     if (options.body) headers["Content-Type"] = "application/json";
 
     const response = await fetch(`${BASE_API}${path}`, { ...options, headers });
     const data = (response.headers.get("content-type") || "").includes("application/json")
         ? await response.json()
         : null;
-    if (!response.ok) throw new Error(data?.detail || data?.message || "요청에 실패했습니다.");
+    if (!response.ok) {
+        if (response.status === 401) clearSession();
+        throw new Error(data?.detail || data?.message || "요청에 실패했습니다.");
+    }
     return data;
+}
+
+function saveAuth(payload) {
+    authToken = payload.token;
+    sessionUser = payload.user;
+    localStorage.setItem(TOKEN_KEY, authToken);
+}
+
+function clearSession() {
+    authToken = null;
+    sessionUser = null;
+    localStorage.removeItem(TOKEN_KEY);
 }
 
 function readAuthForm() {
@@ -61,10 +78,10 @@ function readAuthForm() {
 async function signup() {
     const data = readAuthForm();
     try {
-        sessionUser = await api("/auth/signup", {
+        saveAuth(await api("/auth/signup", {
             method: "POST",
             body: JSON.stringify(data),
-        });
+        }));
         applyLoginState();
         await bootBoards();
         showToast("회원가입이 완료되었습니다.");
@@ -76,10 +93,10 @@ async function signup() {
 async function login() {
     const data = readAuthForm();
     try {
-        sessionUser = await api("/auth/login", {
+        saveAuth(await api("/auth/login", {
             method: "POST",
             body: JSON.stringify({ email: data.email, password: data.password }),
-        });
+        }));
         applyLoginState();
         await bootBoards();
         showToast("로그인되었습니다.");
@@ -88,11 +105,33 @@ async function login() {
     }
 }
 
+async function logout() {
+    try {
+        if (authToken) await api("/auth/logout", { method: "POST" });
+    } catch (_) {
+    } finally {
+        clearSession();
+        location.reload();
+    }
+}
+
+async function restoreSession() {
+    if (!authToken) return;
+    try {
+        sessionUser = await api("/auth/me");
+        applyLoginState();
+        await bootBoards();
+    } catch (_) {
+        clearSession();
+    }
+}
+
 function applyLoginState() {
     qs("#login-card").hidden = true;
     qs("#profile-card").hidden = false;
     qs("#write-panel").hidden = false;
     qs("#top-login-indicator").textContent = sessionUser.role === "admin" ? "관리자 로그인" : "로그인 완료";
+    qs("#top-login-indicator").onclick = logout;
     qs("#display-name").textContent = sessionUser.name;
     qs("#display-grade").textContent = `이순신고등학교 ${sessionUser.grade}학년`;
     qs("#display-role").textContent = sessionUser.role === "admin"
@@ -172,12 +211,14 @@ function createPostRow(post, boardId, className) {
     const row = make("article", { className });
     const title = make("button", { type: "button", text: post.title });
     title.addEventListener("click", () => openArticleDetail(post.post_id, boardId));
-    const content = make("p", { className: "post-snippet", text: post.content });
-    const meta = make("div", {
-        className: "post-meta",
-        text: `${post.author_name} · 👍 ${post.like_count} · 💬 ${post.comment_count} · ${formatDate(post.created_at)}`,
-    });
-    row.append(title, content, meta);
+    row.append(
+        title,
+        make("p", { className: "post-snippet", text: post.content }),
+        make("div", {
+            className: "post-meta",
+            text: `${post.author_name} · 👍 ${post.like_count} · 💬 ${post.comment_count} · ${formatDate(post.created_at)}`,
+        }),
+    );
     return row;
 }
 
@@ -444,3 +485,4 @@ function bindEvents() {
 }
 
 bindEvents();
+restoreSession();

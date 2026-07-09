@@ -1,5 +1,7 @@
 const BASE_API = window.location.protocol === "file:" ? "http://127.0.0.1:8000/api" : "/api";
+const TOKEN_KEY = "yita_admin_auth_token";
 
+let authToken = localStorage.getItem(TOKEN_KEY);
 let adminUser = null;
 
 const qs = (selector) => document.querySelector(selector);
@@ -24,36 +26,82 @@ function showToast(message) {
 
 async function api(path, options = {}) {
     const headers = { ...(options.headers || {}) };
-    if (adminUser) headers["user-id"] = adminUser.user_id;
+    if (authToken) headers.Authorization = `Bearer ${authToken}`;
     if (options.body) headers["Content-Type"] = "application/json";
+
     const response = await fetch(`${BASE_API}${path}`, { ...options, headers });
     const data = (response.headers.get("content-type") || "").includes("application/json")
         ? await response.json()
         : null;
-    if (!response.ok) throw new Error(data?.detail || data?.message || "요청에 실패했습니다.");
+    if (!response.ok) {
+        if (response.status === 401) clearAdminSession();
+        throw new Error(data?.detail || data?.message || "요청에 실패했습니다.");
+    }
     return data;
+}
+
+function saveAdminSession(payload) {
+    authToken = payload.token;
+    adminUser = payload.user;
+    localStorage.setItem(TOKEN_KEY, authToken);
+}
+
+function clearAdminSession() {
+    authToken = null;
+    adminUser = null;
+    localStorage.removeItem(TOKEN_KEY);
 }
 
 async function loginAdmin() {
     try {
-        adminUser = await api("/auth/login", {
+        const payload = await api("/auth/login", {
             method: "POST",
             body: JSON.stringify({
                 email: qs("#admin-email").value.trim(),
                 password: qs("#admin-password").value,
             }),
         });
-        if (adminUser.role !== "admin") {
-            adminUser = null;
+        if (payload.user.role !== "admin") {
             throw new Error("관리자 계정만 접근할 수 있습니다.");
         }
-        qs("#admin-login-card").hidden = true;
-        qs("#admin-dashboard").hidden = false;
-        qs("#admin-state").textContent = `${adminUser.name} 로그인`;
+        saveAdminSession(payload);
+        applyAdminState();
         await refreshAdmin();
         showToast("관리자로 로그인되었습니다.");
     } catch (error) {
+        clearAdminSession();
         showToast(error.message);
+    }
+}
+
+async function restoreAdminSession() {
+    if (!authToken) return;
+    try {
+        const user = await api("/auth/me");
+        if (user.role !== "admin") throw new Error("관리자 계정만 접근할 수 있습니다.");
+        adminUser = user;
+        applyAdminState();
+        await refreshAdmin();
+    } catch (error) {
+        clearAdminSession();
+        showToast(error.message);
+    }
+}
+
+function applyAdminState() {
+    qs("#admin-login-card").hidden = true;
+    qs("#admin-dashboard").hidden = false;
+    qs("#admin-state").textContent = `${adminUser.name} 로그인`;
+    qs("#admin-state").onclick = logoutAdmin;
+}
+
+async function logoutAdmin() {
+    try {
+        if (authToken) await api("/auth/logout", { method: "POST" });
+    } catch (_) {
+    } finally {
+        clearAdminSession();
+        location.reload();
     }
 }
 
@@ -217,3 +265,4 @@ async function approveClub(boardId) {
 
 qs("#admin-login-button").addEventListener("click", loginAdmin);
 qs("#refresh-admin-button").addEventListener("click", () => refreshAdmin().catch((error) => showToast(error.message)));
+restoreAdminSession();

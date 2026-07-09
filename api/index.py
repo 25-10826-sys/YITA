@@ -3,11 +3,11 @@ import base64
 import hashlib
 import hmac
 import os
+import secrets
 from pathlib import Path
 import sqlite3
 import traceback
 from typing import Optional
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,55 +16,18 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
 try:
-    import psycopg
-    from psycopg.rows import dict_row
+    import libsql
 except Exception:
-    psycopg = None
-    dict_row = None
-
-
-def clean_postgres_url(url: Optional[str]) -> Optional[str]:
-    if not url:
-        return url
-    parsed = urlsplit(url)
-    if parsed.scheme not in {"postgres", "postgresql"}:
-        return url
-
-    allowed_query_keys = {
-        "application_name",
-        "channel_binding",
-        "connect_timeout",
-        "gssencmode",
-        "keepalives",
-        "keepalives_count",
-        "keepalives_idle",
-        "keepalives_interval",
-        "sslcert",
-        "sslcompression",
-        "sslcrl",
-        "sslkey",
-        "sslmode",
-        "sslrootcert",
-        "sslsni",
-        "target_session_attrs",
-    }
-    query = urlencode(
-        [(key, value) for key, value in parse_qsl(parsed.query, keep_blank_values=True) if key in allowed_query_keys]
-    )
-    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, query, parsed.fragment))
+    libsql = None
 
 
 SCHOOL_DOMAIN = os.getenv("SCHOOL_EMAIL_DOMAIN", "yisunsin.cnehs.kr")
 DEFAULT_ADMIN_EMAIL = os.getenv("DEFAULT_ADMIN_EMAIL", f"admin@{SCHOOL_DOMAIN}").lower()
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "pol357000**")
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DATABASE_URL = clean_postgres_url(
-    os.getenv("DATABASE_URL")
-    or os.getenv("POSTGRES_URL")
-    or os.getenv("POSTGRES_PRISMA_URL")
-    or os.getenv("POSTGRES_URL_NON_POOLING")
-)
-DB_KIND = "postgres" if DATABASE_URL else "sqlite"
+TURSO_DATABASE_URL = os.getenv("TURSO_DATABASE_URL")
+TURSO_AUTH_TOKEN = os.getenv("TURSO_AUTH_TOKEN")
+DB_KIND = "turso" if TURSO_DATABASE_URL else "sqlite"
 DEFAULT_SQLITE_PATH = Path(os.getenv("TMPDIR", "/tmp")) / "database.sqlite" if os.getenv("VERCEL") else PROJECT_ROOT / "database.sqlite"
 DB_FILE = os.getenv("DATABASE_PATH", str(DEFAULT_SQLITE_PATH))
 
@@ -92,58 +55,56 @@ class RowDict(dict):
         return super().__getitem__(key)
 
 
-def normalize_row(row):
+def normalize_row(row, columns=None):
     if row is None:
         return None
     if isinstance(row, RowDict):
         return row
-    return RowDict(dict(row))
+    try:
+        return RowDict(dict(row))
+    except (TypeError, ValueError):
+        if columns:
+            return RowDict(dict(zip(columns, row)))
+        return RowDict({index: value for index, value in enumerate(row)})
 
 
 class DbCursor:
-    def __init__(self, cursor):
-        self.cursor = cursor
+    def __init__(self, connection):
+        self.connection = connection
+        self.result = None
+        self.columns = None
         self.lastrowid = None
 
     def execute(self, sql: str, params=()):
-        if DB_KIND == "postgres":
-            sql = self._to_postgres(sql)
-            self.cursor.execute(sql, params)
-            if " returning " in sql.lower():
-                row = self.cursor.fetchone()
-                self.lastrowid = next(iter(row.values())) if row else None
-            return self
-
-        self.cursor.execute(sql, params)
-        self.lastrowid = self.cursor.lastrowid
+        self.result = self.connection.execute(sql, params)
+        self.columns = self._extract_columns(self.result)
+        self.lastrowid = getattr(self.result, "lastrowid", None)
+        if self.lastrowid is None and sql.lstrip().lower().startswith("insert "):
+            try:
+                row = self.connection.execute("SELECT last_insert_rowid() AS id").fetchone()
+                self.lastrowid = normalize_row(row, ["id"])["id"]
+            except Exception:
+                self.lastrowid = None
         return self
 
     def fetchone(self):
-        return normalize_row(self.cursor.fetchone())
+        return normalize_row(self.result.fetchone(), self.columns)
 
     def fetchall(self):
-        return [normalize_row(row) for row in self.cursor.fetchall()]
+        return [normalize_row(row, self.columns) for row in self.result.fetchall()]
 
     def __iter__(self):
         return iter(self.fetchall())
 
     @staticmethod
-    def _to_postgres(sql: str) -> str:
-        lowered = " ".join(sql.lower().split())
-        returning_map = {
-            "insert into users": "user_id",
-            "insert into boards": "board_id",
-            "insert into posts": "post_id",
-            "insert into comments": "comment_id",
-            "insert into reports": "report_id",
-        }
-        sql = sql.replace("?", "%s")
-        if lowered.startswith("insert into") and " returning " not in lowered:
-            for prefix, column in returning_map.items():
-                if lowered.startswith(prefix):
-                    sql = f"{sql} RETURNING {column}"
-                    break
-        return sql
+    def _extract_columns(result):
+        description = getattr(result, "description", None)
+        if description:
+            return [column[0] for column in description]
+        columns = getattr(result, "columns", None)
+        if columns:
+            return list(columns)
+        return None
 
 
 class DbConnection:
@@ -151,7 +112,7 @@ class DbConnection:
         self.connection = connection
 
     def cursor(self):
-        return DbCursor(self.connection.cursor())
+        return DbCursor(self.connection)
 
     def commit(self):
         self.connection.commit()
@@ -161,10 +122,17 @@ class DbConnection:
 
 
 def get_connection():
-    if DB_KIND == "postgres":
-        if psycopg is None:
-            raise RuntimeError("DATABASE_URL을 사용하려면 psycopg[binary]가 필요합니다.")
-        return DbConnection(psycopg.connect(DATABASE_URL, row_factory=dict_row, prepare_threshold=None))
+    if DB_KIND == "turso":
+        if libsql is None:
+            raise RuntimeError("Turso를 사용하려면 libsql 패키지가 필요합니다.")
+        if not TURSO_AUTH_TOKEN:
+            raise RuntimeError("TURSO_AUTH_TOKEN 환경변수가 필요합니다.")
+        conn = libsql.connect(database=TURSO_DATABASE_URL, auth_token=TURSO_AUTH_TOKEN)
+        try:
+            conn.execute("PRAGMA foreign_keys = ON")
+        except Exception:
+            pass
+        return DbConnection(conn)
 
     Path(DB_FILE).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_FILE)
@@ -182,16 +150,6 @@ def get_db():
 
 
 def column_exists(cursor: DbCursor, table: str, column: str) -> bool:
-    if DB_KIND == "postgres":
-        cursor.execute(
-            """
-            SELECT column_name
-            FROM information_schema.columns
-            WHERE table_schema = 'public' AND table_name = ? AND column_name = ?
-            """,
-            (table, column),
-        )
-        return cursor.fetchone() is not None
     return any(row["name"] == column for row in cursor.execute(f"PRAGMA table_info({table})"))
 
 
@@ -216,6 +174,20 @@ def verify_password(password: str, password_hash: str) -> bool:
     return hmac.compare_digest(actual, expected)
 
 
+def hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def create_session(cursor: DbCursor, user_id: int) -> dict:
+    token = secrets.token_urlsafe(48)
+    expires_at = (datetime.now() + timedelta(days=14)).isoformat()
+    cursor.execute(
+        "INSERT INTO sessions (user_id, token_hash, expires_at) VALUES (?, ?, ?)",
+        (user_id, hash_token(token), expires_at),
+    )
+    return {"token": token, "expires_at": expires_at}
+
+
 def clean_text(value: str, field_name: str, min_length: int, max_length: int) -> str:
     value = value.strip()
     if len(value) < min_length:
@@ -228,13 +200,9 @@ def clean_text(value: str, field_name: str, min_length: int, max_length: int) ->
 def init_db():
     conn = get_connection()
     cursor = conn.cursor()
-    auto_id = "SERIAL PRIMARY KEY" if DB_KIND == "postgres" else "INTEGER PRIMARY KEY AUTOINCREMENT"
-    now_default = "(CURRENT_TIMESTAMP::TEXT)" if DB_KIND == "postgres" else "CURRENT_TIMESTAMP"
-    add_created_at = (
-        "TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP::TEXT)"
-        if DB_KIND == "postgres"
-        else "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP"
-    )
+    auto_id = "INTEGER PRIMARY KEY AUTOINCREMENT"
+    now_default = "CURRENT_TIMESTAMP"
+    add_created_at = "TEXT"
 
     cursor.execute(
         f"""
@@ -321,6 +289,19 @@ def init_db():
         )
         """
     )
+    cursor.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS sessions (
+            session_id {auto_id},
+            user_id INTEGER NOT NULL,
+            token_hash TEXT UNIQUE NOT NULL,
+            created_at TEXT NOT NULL DEFAULT {now_default},
+            expires_at TEXT NOT NULL,
+            revoked_at TEXT,
+            FOREIGN KEY(user_id) REFERENCES users(user_id) ON DELETE CASCADE
+        )
+        """
+    )
 
     for table, column, ddl in [
         ("users", "password_hash", "TEXT"),
@@ -332,6 +313,7 @@ def init_db():
         ("posts", "like_count", "INTEGER NOT NULL DEFAULT 0"),
         ("posts", "updated_at", "TEXT"),
         ("reports", "status", "TEXT NOT NULL DEFAULT 'pending'"),
+        ("sessions", "revoked_at", "TEXT"),
     ]:
         ensure_column(cursor, table, column, ddl)
 
@@ -501,17 +483,32 @@ def public_user(user: dict):
     }
 
 
+def auth_response(user: dict, cursor: DbCursor) -> dict:
+    return {"user": public_user(user), **create_session(cursor, user["user_id"])}
+
+
 def get_current_user(
-    user_id: Optional[int] = Header(None, alias="user-id"),
+    authorization: Optional[str] = Header(None, alias="Authorization"),
     conn: DbConnection = Depends(get_db),
 ):
-    if not user_id:
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="로그인이 필요합니다.")
+    token = authorization.removeprefix("Bearer ").strip()
+    if not token:
         raise HTTPException(status_code=401, detail="로그인이 필요합니다.")
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
+    cursor.execute(
+        """
+        SELECT u.*
+        FROM sessions s
+        JOIN users u ON s.user_id = u.user_id
+        WHERE s.token_hash = ? AND s.revoked_at IS NULL AND s.expires_at > ?
+        """,
+        (hash_token(token), datetime.now().isoformat()),
+    )
     user = cursor.fetchone()
     if user is None:
-        raise HTTPException(status_code=404, detail="존재하지 않는 사용자입니다.")
+        raise HTTPException(status_code=401, detail="세션이 만료되었거나 유효하지 않습니다.")
     user = dict(user)
     if user.get("timeout_until") and datetime.now().isoformat() < user["timeout_until"]:
         raise HTTPException(status_code=403, detail=f"정지된 계정입니다. 사유: {user.get('suspend_reason') or '관리자 정지'}")
@@ -581,7 +578,10 @@ def signup(data: SignupInput, conn: DbConnection = Depends(get_db)):
         )
         conn.commit()
         cursor.execute("SELECT * FROM users WHERE user_id = ?", (cursor.lastrowid,))
-        return public_user(dict(cursor.fetchone()))
+        user = dict(cursor.fetchone())
+        payload = auth_response(user, cursor)
+        conn.commit()
+        return payload
     except HTTPException:
         raise
     except Exception as exc:
@@ -599,7 +599,31 @@ def login(data: LoginInput, conn: DbConnection = Depends(get_db)):
     user = dict(user)
     if user.get("timeout_until") and datetime.now().isoformat() < user["timeout_until"]:
         raise HTTPException(status_code=403, detail=f"정지된 계정입니다. 사유: {user.get('suspend_reason') or '관리자 정지'}")
+    payload = auth_response(user, cursor)
+    conn.commit()
+    return payload
+
+
+@app.get("/api/auth/me")
+def me(user: dict = Depends(get_current_user)):
     return public_user(user)
+
+
+@app.post("/api/auth/logout")
+def logout(
+    authorization: Optional[str] = Header(None, alias="Authorization"),
+    conn: DbConnection = Depends(get_db),
+):
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.removeprefix("Bearer ").strip()
+        if token:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE sessions SET revoked_at = ? WHERE token_hash = ?",
+                (datetime.now().isoformat(), hash_token(token)),
+            )
+            conn.commit()
+    return {"message": "로그아웃되었습니다."}
 
 
 @app.get("/api/boards")

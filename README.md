@@ -1,6 +1,6 @@
 # YITA
 
-이순신고 학생 커뮤니티 MVP입니다. Vercel 배포를 고려해 정적 프론트와 FastAPI API를 분리했습니다.
+이순신고 학생 커뮤니티 MVP입니다. Vercel 정적 프론트 + FastAPI API + Turso/libSQL DB 구조입니다.
 
 ## 로컬 실행
 
@@ -12,23 +12,29 @@ python YSS.py
 - 커뮤니티: `http://127.0.0.1:8000`
 - 관리자: `http://127.0.0.1:8000/admin`
 
-## Vercel + Supabase 연결
+`TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`이 없으면 로컬 개발용 `database.sqlite`를 사용합니다.
 
-Vercel 프로젝트의 Environment Variables에 아래 값 중 하나를 넣으면 Postgres를 사용합니다.
+## Vercel + Turso 환경 변수
 
-- `POSTGRES_URL`: Supabase pooler URL 권장
-- 또는 `DATABASE_URL`
-- 또는 `POSTGRES_PRISMA_URL`
-- 또는 `POSTGRES_URL_NON_POOLING`
+Vercel 프로젝트의 Environment Variables에 아래 값을 넣으세요.
 
-추가 권장 변수:
-
+- `TURSO_DATABASE_URL`: Turso DB URL. 예: `libsql://...turso.io`
+- `TURSO_AUTH_TOKEN`: Turso DB auth token
 - `SCHOOL_EMAIL_DOMAIN`: `yisunsin.cnehs.kr`
 - `DEFAULT_ADMIN_EMAIL`: 예) `admin@yisunsin.cnehs.kr`
-- `ADMIN_PASSWORD`: 관리자 비밀번호
-- `CORS_ORIGINS`: 운영 도메인, 개발 중에는 `*`
+- `ADMIN_PASSWORD`: 운영 관리자 비밀번호
+- `CORS_ORIGINS`: 운영 도메인. 개발 중에는 `*`
 
-`DATABASE_URL`/`POSTGRES_URL` 계열 값이 없으면 로컬 개발용 `database.sqlite`를 사용합니다.
+## Turso에서 해야 할 일
+
+```bash
+turso auth login
+turso db create yita
+turso db show --url yita
+turso db tokens create yita
+```
+
+출력된 URL을 `TURSO_DATABASE_URL`, 토큰을 `TURSO_AUTH_TOKEN`으로 Vercel에 등록하면 됩니다.
 
 ## 기본 관리자
 
@@ -40,12 +46,12 @@ Vercel 프로젝트의 Environment Variables에 아래 값 중 하나를 넣으�
 ## 보안 주의
 
 - `.env`, `.env.*`, `database.sqlite`는 `.gitignore`에 포함되어 있습니다.
-- Supabase `service_role`, DB password, JWT secret은 절대 프론트 코드나 Git에 넣지 마세요.
-- 실수로 노출한 키는 Supabase에서 즉시 rotate하세요.
+- `TURSO_AUTH_TOKEN`은 프론트 코드나 Git에 넣지 마세요.
+- 실수로 노출한 토큰은 Turso에서 새 토큰을 발급하고 기존 토큰을 폐기하세요.
 
 ## 구현된 기능
 
-- 비밀번호 기반 회원가입/로그인
+- 토큰 세션 기반 회원가입/로그인
 - 게시판별 목록/상세/댓글/좋아요/신고
 - 공지 게시판 작성 권한 제한
 - 관리자 페이지 `/admin`
