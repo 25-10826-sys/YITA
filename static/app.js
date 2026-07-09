@@ -5,6 +5,7 @@ let authToken = localStorage.getItem(TOKEN_KEY);
 let sessionUser = null;
 let selectedBoardId = 1;
 let currentBoards = [];
+let homeCache = null;
 
 const boardNames = {
     1: "전체 게시판",
@@ -151,11 +152,12 @@ function requireLogin() {
 }
 
 async function bootBoards() {
-    currentBoards = await api("/boards");
+    homeCache = await api("/home");
+    currentBoards = homeCache.boards;
     renderClubMenu();
-    await switchBoard(selectedBoardId);
-    await renderPreviews();
-    await renderHotPosts();
+    renderPreviews(homeCache.previews);
+    renderHotPosts(homeCache.hot_posts);
+    await switchBoard(selectedBoardId, { skipSidebars: true });
     if (sessionUser.role === "admin") await syncAdminClubConsole();
 }
 
@@ -182,13 +184,16 @@ function boardName(boardId) {
     return boardNames[Number(boardId)] || "게시판";
 }
 
-async function switchBoard(boardId) {
+async function switchBoard(boardId, options = {}) {
     if (!requireLogin()) return;
     selectedBoardId = Number(boardId);
     qs("#post-list-title").textContent = boardName(selectedBoardId);
     qs("#current-board-title").textContent = `${boardName(selectedBoardId)} 글쓰기`;
     qs("#article-detail-viewer").hidden = true;
     await renderPostList();
+    if (!options.skipSidebars) {
+        refreshSidebars().catch(() => {});
+    }
 }
 
 async function renderPostList() {
@@ -222,11 +227,11 @@ function createPostRow(post, boardId, className) {
     return row;
 }
 
-async function renderPreviews() {
+function renderPreviews(previews = {}) {
     for (let boardId = 1; boardId <= 4; boardId += 1) {
         const target = qs(`#mini-board-${boardId}`);
         target.replaceChildren();
-        const posts = await api(`/boards/${boardId}/posts`);
+        const posts = previews[String(boardId)] || [];
         if (posts.length === 0) {
             target.textContent = "작성된 글이 없습니다.";
             target.classList.add("muted");
@@ -239,14 +244,10 @@ async function renderPreviews() {
     }
 }
 
-async function renderHotPosts() {
-    const posts = await api("/posts");
+function renderHotPosts(posts = []) {
     const hotBox = qs("#right-hot-box");
     hotBox.replaceChildren();
-    const hotPosts = posts
-        .slice()
-        .sort((a, b) => b.like_count + b.comment_count - (a.like_count + a.comment_count))
-        .slice(0, 5);
+    const hotPosts = posts.slice(0, 5);
     if (hotPosts.length === 0) {
         hotBox.textContent = "인기 글이 없습니다.";
         hotBox.classList.add("muted");
@@ -282,10 +283,9 @@ async function submitArticle() {
 
 async function openArticleDetail(postId, boardId) {
     try {
-        const posts = await api(`/boards/${boardId}/posts`);
-        const post = posts.find((item) => item.post_id === postId);
-        if (!post) throw new Error("게시글을 찾을 수 없습니다.");
-        const comments = await api(`/posts/${postId}/comments`);
+        const detail = await api(`/posts/${postId}/detail`);
+        const post = detail.post;
+        const comments = detail.comments;
         renderArticle(post, comments, boardId);
     } catch (error) {
         showToast(error.message);
@@ -344,8 +344,8 @@ function renderArticle(post, comments, boardId) {
 async function likePost(postId, boardId) {
     try {
         await api(`/posts/${postId}/like`, { method: "POST" });
-        await refreshAll();
         await openArticleDetail(postId, boardId);
+        refreshAll().catch(() => {});
     } catch (error) {
         showToast(error.message);
     }
@@ -376,8 +376,8 @@ async function submitReply(postId, boardId) {
                 is_anonymous: qs("#reply-anon").checked,
             }),
         });
-        await refreshAll();
         await openArticleDetail(postId, boardId);
+        refreshAll().catch(() => {});
     } catch (error) {
         showToast(error.message);
     }
@@ -451,9 +451,15 @@ async function searchPosts() {
 }
 
 async function refreshAll() {
-    await renderPostList();
-    await renderPreviews();
-    await renderHotPosts();
+    await Promise.all([renderPostList(), refreshSidebars()]);
+}
+
+async function refreshSidebars() {
+    homeCache = await api("/home");
+    currentBoards = homeCache.boards;
+    renderClubMenu();
+    renderPreviews(homeCache.previews);
+    renderHotPosts(homeCache.hot_posts);
 }
 
 function formatDate(value) {

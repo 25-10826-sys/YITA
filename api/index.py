@@ -30,6 +30,8 @@ TURSO_AUTH_TOKEN = os.getenv("TURSO_AUTH_TOKEN")
 DB_KIND = "turso" if TURSO_DATABASE_URL else "sqlite"
 DEFAULT_SQLITE_PATH = Path(os.getenv("TMPDIR", "/tmp")) / "database.sqlite" if os.getenv("VERCEL") else PROJECT_ROOT / "database.sqlite"
 DB_FILE = os.getenv("DATABASE_PATH", str(DEFAULT_SQLITE_PATH))
+TURSO_CONNECTION = None
+DB_INITIALIZED = False
 
 STATIC_DIR = PROJECT_ROOT / "static"
 INDEX_FILE = PROJECT_ROOT / "index.html"
@@ -108,8 +110,9 @@ class DbCursor:
 
 
 class DbConnection:
-    def __init__(self, connection):
+    def __init__(self, connection, should_close=True):
         self.connection = connection
+        self.should_close = should_close
 
     def cursor(self):
         return DbCursor(self.connection)
@@ -118,21 +121,24 @@ class DbConnection:
         self.connection.commit()
 
     def close(self):
-        self.connection.close()
+        if self.should_close:
+            self.connection.close()
 
 
 def get_connection():
+    global TURSO_CONNECTION
     if DB_KIND == "turso":
         if libsql is None:
             raise RuntimeError("Turso를 사용하려면 libsql 패키지가 필요합니다.")
         if not TURSO_AUTH_TOKEN:
             raise RuntimeError("TURSO_AUTH_TOKEN 환경변수가 필요합니다.")
-        conn = libsql.connect(database=TURSO_DATABASE_URL, auth_token=TURSO_AUTH_TOKEN)
-        try:
-            conn.execute("PRAGMA foreign_keys = ON")
-        except Exception:
-            pass
-        return DbConnection(conn)
+        if TURSO_CONNECTION is None:
+            TURSO_CONNECTION = libsql.connect(database=TURSO_DATABASE_URL, auth_token=TURSO_AUTH_TOKEN)
+            try:
+                TURSO_CONNECTION.execute("PRAGMA foreign_keys = ON")
+            except Exception:
+                pass
+        return DbConnection(TURSO_CONNECTION, should_close=False)
 
     Path(DB_FILE).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_FILE)
@@ -142,11 +148,20 @@ def get_connection():
 
 
 def get_db():
+    ensure_db_initialized()
     conn = get_connection()
     try:
         yield conn
     finally:
         conn.close()
+
+
+def ensure_db_initialized():
+    global DB_INITIALIZED
+    if DB_INITIALIZED:
+        return
+    init_db()
+    DB_INITIALIZED = True
 
 
 def column_exists(cursor: DbCursor, table: str, column: str) -> bool:
@@ -302,6 +317,14 @@ def init_db():
         )
         """
     )
+    for index_sql in [
+        "CREATE INDEX IF NOT EXISTS idx_posts_board_created ON posts(board_id, created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_posts_created ON posts(created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_comments_post_created ON comments(post_id, created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token_hash)",
+        "CREATE INDEX IF NOT EXISTS idx_reports_created ON reports(created_at DESC)",
+    ]:
+        cursor.execute(index_sql)
 
     for table, column, ddl in [
         ("users", "password_hash", "TEXT"),
@@ -373,9 +396,6 @@ def seed_admin(cursor: DbCursor):
         """,
         (password_hash, DEFAULT_ADMIN_EMAIL),
     )
-
-
-init_db()
 
 
 class SignupInput(BaseModel):
@@ -633,6 +653,45 @@ def get_boards(conn: DbConnection = Depends(get_db)):
     return [dict(row) for row in cursor.fetchall()]
 
 
+@app.get("/api/home")
+def get_home(conn: DbConnection = Depends(get_db)):
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM boards WHERE is_approved = 1 ORDER BY board_id")
+    boards = [dict(row) for row in cursor.fetchall()]
+
+    previews = {}
+    for board_id in range(1, 5):
+        cursor.execute(
+            """
+            SELECT p.*, u.name as author_name,
+                   (SELECT COUNT(*) FROM comments WHERE post_id = p.post_id) as comment_count
+            FROM posts p
+            JOIN users u ON p.user_id = u.user_id
+            WHERE p.board_id = ?
+            ORDER BY p.created_at DESC
+            LIMIT 3
+            """,
+            (board_id,),
+        )
+        previews[str(board_id)] = [serialize_post(row) for row in cursor.fetchall()]
+
+    cursor.execute(
+        """
+        SELECT p.*, u.name as author_name,
+               (SELECT COUNT(*) FROM comments WHERE post_id = p.post_id) as comment_count
+        FROM posts p
+        JOIN users u ON p.user_id = u.user_id
+        JOIN boards b ON p.board_id = b.board_id
+        WHERE b.is_approved = 1
+        ORDER BY (p.like_count + (SELECT COUNT(*) FROM comments WHERE post_id = p.post_id)) DESC,
+                 p.created_at DESC
+        LIMIT 5
+        """
+    )
+    hot_posts = [serialize_post(row) for row in cursor.fetchall()]
+    return {"boards": boards, "previews": previews, "hot_posts": hot_posts}
+
+
 @app.get("/api/posts")
 def search_posts(q: str = Query("", max_length=100), conn: DbConnection = Depends(get_db)):
     cursor = conn.cursor()
@@ -676,6 +735,41 @@ def serialize_post(row):
     if post["is_anonymous"] == 1:
         post["author_name"] = "익명"
     return post
+
+
+@app.get("/api/posts/{post_id}/detail")
+def get_post_detail(post_id: int, conn: DbConnection = Depends(get_db)):
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT p.*, u.name as author_name,
+               (SELECT COUNT(*) FROM comments WHERE post_id = p.post_id) as comment_count
+        FROM posts p
+        JOIN users u ON p.user_id = u.user_id
+        WHERE p.post_id = ?
+        """,
+        (post_id,),
+    )
+    post = cursor.fetchone()
+    if post is None:
+        raise HTTPException(status_code=404, detail="존재하지 않는 게시글입니다.")
+    cursor.execute(
+        """
+        SELECT c.*, u.name as author_name
+        FROM comments c
+        JOIN users u ON c.user_id = u.user_id
+        WHERE c.post_id = ?
+        ORDER BY c.created_at
+        """,
+        (post_id,),
+    )
+    comments = []
+    for row in cursor.fetchall():
+        comment = dict(row)
+        if comment["is_anonymous"] == 1:
+            comment["author_name"] = "익명"
+        comments.append(comment)
+    return {"post": serialize_post(post), "comments": comments}
 
 
 @app.post("/api/posts")
