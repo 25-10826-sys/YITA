@@ -218,7 +218,7 @@ async function enterBoard(boardId) {
     const board = currentBoards.find((item) => item.board_id === selectedBoardId);
     qs("#board-directory").hidden = true;
     qs("#board-view").hidden = false;
-    qs("#write-panel").hidden = false;
+    showWritePanel(false);
     qs("#post-list-title").textContent = board ? boardTitle(board) : "\uAC8C\uC2DC\uD310";
     qs("#current-board-title").textContent = `${board ? boardTitle(board) : "\uAC8C\uC2DC\uD310"} \uAE00\uC4F0\uAE30`;
     qs("#article-detail-viewer").hidden = true;
