@@ -490,6 +490,27 @@ class SuspendInput(BaseModel):
     reason: str = Field(min_length=1, max_length=200)
 
 
+class ProfileUpdateInput(BaseModel):
+    name: str
+    grade: int = Field(ge=1, le=3)
+    current_password: Optional[str] = None
+    new_password: Optional[str] = None
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        return clean_text(value, "이름", 1, 30)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, value: Optional[str]) -> Optional[str]:
+        if value is None or value == "":
+            return value
+        if len(value) < 6 or len(value) > 80:
+            raise ValueError("새 비밀번호는 6자 이상 80자 이내여야 합니다.")
+        return value
+
+
 def public_user(user: dict):
     return {
         "user_id": user["user_id"],
@@ -627,6 +648,32 @@ def login(data: LoginInput, conn: DbConnection = Depends(get_db)):
 @app.get("/api/auth/me")
 def me(user: dict = Depends(get_current_user)):
     return public_user(user)
+
+
+@app.patch("/api/auth/profile")
+def update_profile(data: ProfileUpdateInput, user: dict = Depends(get_current_user), conn: DbConnection = Depends(get_db)):
+    cursor = conn.cursor()
+    if data.new_password:
+        if not data.current_password:
+            raise HTTPException(status_code=400, detail="현재 비밀번호를 입력해주세요.")
+        cursor.execute("SELECT password_hash FROM users WHERE user_id = ?", (user["user_id"],))
+        existing = cursor.fetchone()
+        if existing is None or not verify_password(data.current_password, existing["password_hash"]):
+            raise HTTPException(status_code=401, detail="현재 비밀번호가 올바르지 않습니다.")
+        password_hash = hash_password(data.new_password)
+        cursor.execute(
+            "UPDATE users SET name = ?, grade = ?, password_hash = ? WHERE user_id = ?",
+            (data.name, data.grade, password_hash, user["user_id"]),
+        )
+    else:
+        cursor.execute(
+            "UPDATE users SET name = ?, grade = ? WHERE user_id = ?",
+            (data.name, data.grade, user["user_id"]),
+        )
+    conn.commit()
+    cursor.execute("SELECT * FROM users WHERE user_id = ?", (user["user_id"],))
+    updated_user = dict(cursor.fetchone())
+    return public_user(updated_user)
 
 
 @app.post("/api/auth/logout")

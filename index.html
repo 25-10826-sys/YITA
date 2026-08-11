@@ -20,7 +20,10 @@
                 <a class="active" href="/">커뮤니티</a>
                 <a href="/admin">관리자</a>
             </nav>
-            <button class="nav-auth-btn" id="top-login-indicator" type="button">로그인 필요</button>
+            <div class="top-actions">
+                <button class="nav-auth-btn" id="profile-edit-button" type="button" hidden>프로필 편집</button>
+                <button class="nav-auth-btn" id="top-login-indicator" type="button">로그인 필요</button>
+            </div>
         </div>
     </header>
 
@@ -105,7 +108,7 @@
                     <textarea id="form-content" placeholder="내용을 입력하세요." rows="5" maxlength="2000"></textarea>
                     <div class="write-panel-bottom">
                         <label><input type="checkbox" id="form-anon"> 익명</label>
-                        <button id="submit-post-button" type="button">등록</button>
+                        <button id="#submit-post-button" type="button">등록</button>
                     </div>
                 </section>
 
@@ -113,6 +116,36 @@
                 <div id="post-list" class="post-list muted">게시판을 선택하세요.</div>
                 <div class="write-action-wrap">
                     <button id="open-write-button" type="button" class="btn-red-login">글쓰기</button>
+                </div>
+            </section>
+
+            <section class="profile-edit-panel" id="profile-edit-panel" hidden>
+                <div class="profile-edit-header">
+                    <button id="close-profile-edit-button" type="button" class="text-button">← 돌아가기</button>
+                    <h2>프로필 편집</h2>
+                </div>
+                <label>
+                    이름
+                    <input type="text" id="profile-name-input" maxlength="30">
+                </label>
+                <label>
+                    학년
+                    <select id="profile-grade-input">
+                        <option value="1">1학년</option>
+                        <option value="2">2학년</option>
+                        <option value="3">3학년</option>
+                    </select>
+                </label>
+                <label>
+                    현재 비밀번호
+                    <input type="password" id="profile-current-password" autocomplete="current-password">
+                </label>
+                <label>
+                    새 비밀번호
+                    <input type="password" id="profile-new-password" autocomplete="new-password">
+                </label>
+                <div class="write-panel-bottom">
+                    <button id="save-profile-button" type="button">저장</button>
                 </div>
             </section>
         </section>

@@ -453,9 +453,41 @@ textarea {
     padding: 6px 10px;
 }
 
-.write-panel {
+..write-panel {
     display: grid;
     gap: 10px;
+}
+
+.write-panel-header,
+.profile-edit-header {
+    align-items: center;
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.profile-edit-panel {
+    background: #fff;
+    border: 1px solid #e3e3e3;
+    border-radius: 10px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+    padding: 16px;
+    margin-top: 16px;
+}
+
+.profile-edit-panel label {
+    display: block;
+    font-size: 13px;
+    color: #444;
+}
+
+.profile-edit-panel input,
+.profile-edit-panel select {
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    margin-top: 6px;
+    padding: 9px 10px;
+    width: 100%;
 }
 
 .write-panel-header {

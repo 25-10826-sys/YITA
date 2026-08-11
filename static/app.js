@@ -130,8 +130,10 @@ async function restoreSession() {
 function applyLoginState() {
     qs("#login-card").hidden = true;
     qs("#profile-card").hidden = false;
+    qs("#profile-edit-button").hidden = false;
     qs("#top-login-indicator").textContent = sessionUser.role === "admin" ? "\uAD00\uB9AC\uC790 \uB85C\uADF8\uC778" : "\uB85C\uADF8\uC778 \uC644\uB8CC";
     qs("#top-login-indicator").onclick = logout;
+    qs("#profile-edit-button").onclick = () => showProfileEdit(true);
     qs("#display-name").textContent = sessionUser.name;
     qs("#display-grade").textContent = `이순신고등학교 ${sessionUser.grade}학년`;
     qs("#display-role").textContent = sessionUser.role === "admin"
@@ -526,6 +528,9 @@ function bindEvents() {
     qs("#submit-post-button").addEventListener("click", submitArticle);
     qs("#open-write-button").addEventListener("click", () => showWritePanel(true));
     qs("#close-write-button").addEventListener("click", () => showWritePanel(false));
+    qs("#profile-edit-button").addEventListener("click", () => showProfileEdit(true));
+    qs("#close-profile-edit-button").addEventListener("click", () => showProfileEdit(false));
+    qs("#save-profile-button").addEventListener("click", saveProfileChanges);
     qs("#club-request-button").addEventListener("click", requestNewClub);
     qs("#refresh-board-button").addEventListener("click", refreshAll);
     qs("#back-directory-button").addEventListener("click", showDirectory);
@@ -548,6 +553,60 @@ function showWritePanel(show) {
         qs("#form-title").focus();
     } else {
         if (selectedBoardId) renderPostList();
+    }
+}
+
+function showProfileEdit(show) {
+    qs("#profile-edit-panel").hidden = !show;
+    qs("#board-directory").hidden = show;
+    qs("#board-view").hidden = show;
+    qs("#post-list").hidden = show;
+    qs("#article-detail-viewer").hidden = show;
+    qs("#write-panel").hidden = true;
+    if (show) {
+        if (!sessionUser) {
+            showToast("로그인이 필요합니다.");
+            return;
+        }
+        qs("#profile-name-input").value = sessionUser.name;
+        qs("#profile-grade-input").value = String(sessionUser.grade);
+        qs("#profile-current-password").value = "";
+        qs("#profile-new-password").value = "";
+    } else {
+        if (selectedBoardId) {
+            qs("#board-view").hidden = false;
+        } else {
+            qs("#board-directory").hidden = false;
+        }
+    }
+}
+
+async function saveProfileChanges() {
+    if (!requireLogin()) return;
+    const name = qs("#profile-name-input").value.trim();
+    const grade = Number(qs("#profile-grade-input").value);
+    const currentPassword = qs("#profile-current-password").value;
+    const newPassword = qs("#profile-new-password").value;
+    if (!name) {
+        showToast("이름을 입력해주세요.");
+        return;
+    }
+    try {
+        const data = { name, grade };
+        if (newPassword) {
+            data.current_password = currentPassword;
+            data.new_password = newPassword;
+        }
+        const updated = await api("/auth/profile", {
+            method: "PATCH",
+            body: JSON.stringify(data),
+        });
+        sessionUser = updated;
+        applyLoginState();
+        showProfileEdit(false);
+        showToast("프로필이 저장되었습니다.");
+    } catch (error) {
+        showToast(error.message);
     }
 }
 
