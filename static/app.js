@@ -248,17 +248,26 @@ async function renderPostList() {
 }
 
 function createPostRow(post, boardId, className) {
-    const row = make("article", { className });
-    const title = make("button", { type: "button", text: post.title });
+    const row = make("article", { className: className ? `${className} post-row` : "post-row" });
+    const title = make("button", { type: "button", className: "post-title", text: post.title });
     title.addEventListener("click", () => openArticleDetail(post.post_id, boardId));
-    row.append(
-        title,
-        make("p", { className: "post-snippet", text: post.content }),
-        make("div", {
-            className: "post-meta",
-            text: `${post.author_name} · 👍 ${post.like_count} · 💬 ${post.comment_count} · ${formatDate(post.created_at)}`,
-        }),
+
+    const snippet = make("p", { className: "post-snippet", text: post.content });
+    const meta = make("div", { className: "post-row-meta" });
+    const leftMeta = make("div", { className: "post-row-meta-left" });
+    const rightMeta = make("div", { className: "post-row-meta-right" });
+
+    leftMeta.append(
+        make("span", { text: post.author_name }),
+        make("span", { text: formatDate(post.created_at) }),
     );
+    rightMeta.append(
+        make("span", { text: `추천 ${post.like_count}` }),
+        make("span", { text: `댓글 ${post.comment_count}` }),
+    );
+    meta.append(leftMeta, rightMeta);
+
+    row.append(title, snippet, meta);
     return row;
 }
 
@@ -313,11 +322,14 @@ function renderArticle(post, comments, boardId) {
     const viewer = qs("#article-detail-viewer");
     viewer.hidden = false;
     viewer.replaceChildren();
-    viewer.append(
-        make("h2", { text: post.title }),
+
+    const article = make("article", { className: "article-thread" });
+    article.append(
+        make("div", { className: "thread-meta", text: `${post.author_name} · ${formatDate(post.created_at)}` }),
+        make("h2", { className: "thread-title", text: post.title }),
         make("p", { className: "article-content", text: post.content }),
-        make("div", { className: "post-meta", text: `${post.author_name} · ${formatDate(post.created_at)} · 👍 ${post.like_count}` }),
     );
+    viewer.append(article);
 
     const actions = make("div", { className: "article-actions" });
     const like = make("button", { type: "button", text: "좋아요" });

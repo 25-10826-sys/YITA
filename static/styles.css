@@ -234,7 +234,8 @@ header {
 .detail-view-container {
     background: #fff;
     border: 1px solid #e3e3e3;
-    border-radius: 6px;
+    border-radius: 10px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
     padding: 16px;
 }
 
@@ -433,12 +434,13 @@ textarea {
     align-items: center;
     display: flex;
     justify-content: space-between;
+    margin-bottom: 12px;
 }
 
 .board-toolbar {
     display: flex;
     gap: 8px;
-    margin-bottom: 10px;
+    margin-bottom: 12px;
 }
 
 .board-toolbar button {
@@ -449,21 +451,104 @@ textarea {
     padding: 5px 9px;
 }
 
+.post-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.post-row,
+.preview-row,
+.hot-row {
+    background: #fcfcfc;
+    border: 1px solid #ececec;
+    border-radius: 8px;
+    margin-bottom: 8px;
+    padding: 12px 14px;
+}
+
+.post-row button,
+.preview-row button,
+.hot-row button {
+    background: transparent;
+    border: 0;
+    color: #222;
+    display: block;
+    font-size: 14px;
+    font-weight: 700;
+    padding: 0;
+    text-align: left;
+    width: 100%;
+}
+
+.post-title {
+    color: #222;
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1.4;
+}
+
+.post-title:hover {
+    color: #c62917;
+}
+
 .post-snippet {
-    color: #555;
+    color: #5b5b5b;
     display: -webkit-box;
     font-size: 13px;
     line-height: 1.45;
-    margin-top: 4px;
+    margin-top: 6px;
     overflow: hidden;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
 }
 
+.post-row-meta {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: space-between;
+    margin-top: 8px;
+}
+
+.post-row-meta-left,
+.post-row-meta-right {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.post-row-meta span,
+.post-meta,
+.comment-meta {
+    color: #888;
+    font-size: 11px;
+}
+
+.article-thread {
+    background: #fcfcfc;
+    border: 1px solid #edd8d5;
+    border-radius: 10px;
+    padding: 16px;
+}
+
+.thread-title {
+    font-size: 19px;
+    line-height: 1.4;
+    margin-top: 8px;
+}
+
+.thread-meta {
+    color: #888;
+    font-size: 12px;
+    margin-top: 8px;
+}
+
 .article-content {
     color: #333;
-    line-height: 1.65;
-    margin-top: 10px;
+    line-height: 1.75;
+    margin-top: 12px;
     white-space: pre-wrap;
 }
 
@@ -495,13 +580,6 @@ textarea {
     font-weight: 700;
     text-align: left;
     width: 100%;
-}
-
-.post-meta,
-.comment-meta {
-    color: #999;
-    font-size: 11px;
-    margin-top: 4px;
 }
 
 .button-list {
@@ -552,7 +630,7 @@ textarea {
 }
 
 .detail-view-container {
-    border-color: #c62917;
+    border-color: #e7c1b7;
 }
 
 .article-actions,
