@@ -97,9 +97,12 @@
                 </div>
 
                 <section class="write-panel" id="write-panel" hidden>
-                    <h3 id="current-board-title">글쓰기</h3>
+                    <div class="write-panel-header">
+                        <h3 id="current-board-title">글쓰기</h3>
+                        <button id="close-write-button" type="button" class="text-button">취소</button>
+                    </div>
                     <input type="text" id="form-title" placeholder="제목" maxlength="80">
-                    <textarea id="form-content" placeholder="내용을 입력하세요." rows="4" maxlength="2000"></textarea>
+                    <textarea id="form-content" placeholder="내용을 입력하세요." rows="5" maxlength="2000"></textarea>
                     <div class="write-panel-bottom">
                         <label><input type="checkbox" id="form-anon"> 익명</label>
                         <button id="submit-post-button" type="button">등록</button>
@@ -108,6 +111,9 @@
 
                 <section class="detail-view-container" id="article-detail-viewer" hidden></section>
                 <div id="post-list" class="post-list muted">게시판을 선택하세요.</div>
+                <div class="write-action-wrap">
+                    <button id="open-write-button" type="button" class="btn-red-login">글쓰기</button>
+                </div>
             </section>
         </section>
 

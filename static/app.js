@@ -524,16 +524,31 @@ function bindEvents() {
     qs("#login-button").addEventListener("click", login);
     qs("#signup-button").addEventListener("click", signup);
     qs("#submit-post-button").addEventListener("click", submitArticle);
+    qs("#open-write-button").addEventListener("click", () => showWritePanel(true));
+    qs("#close-write-button").addEventListener("click", () => showWritePanel(false));
     qs("#club-request-button").addEventListener("click", requestNewClub);
     qs("#refresh-board-button").addEventListener("click", refreshAll);
     qs("#back-directory-button").addEventListener("click", showDirectory);
     qs("#back-list-button").addEventListener("click", () => {
         qs("#article-detail-viewer").hidden = true;
+        showWritePanel(false);
         renderPostList();
     });
     qs("#search-input").addEventListener("keydown", (event) => {
         if (event.key === "Enter") searchPosts().catch((error) => showToast(error.message));
     });
+}
+
+function showWritePanel(show) {
+    qs("#write-panel").hidden = !show;
+    qs("#post-list").hidden = show;
+    qs("#article-detail-viewer").hidden = show;
+    if (show) {
+        qs("#current-board-title").textContent = `${qs("#post-list-title").textContent} 글쓰기`;
+        qs("#form-title").focus();
+    } else {
+        if (selectedBoardId) renderPostList();
+    }
 }
 
 bindEvents();
