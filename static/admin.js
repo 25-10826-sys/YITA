@@ -117,7 +117,8 @@ function switchAdminTab(tabName) {
 }
 
 async function renderUsers() {
-    const users = await api("/admin/users");
+    const query = qs("#admin-user-search").value.trim();
+    const users = await api(`/admin/users${query ? `?q=${encodeURIComponent(query)}` : ""}`);
     const box = qs("#admin-users");
     box.replaceChildren();
     if (users.length === 0) {
@@ -142,9 +143,13 @@ function createUserRow(user) {
 
     const actions = make("div", { className: "admin-actions" });
     if (user.role !== "admin") {
+        const grant = make("button", { type: "button", text: "어드민 부여" });
+        grant.addEventListener("click", () => grantAdmin(user.user_id));
+        actions.append(grant);
+
         const notice = make("button", {
             type: "button",
-            text: user.can_post_notice ? "\uACF5\uC9C0\uAD8C\uD55C \uD68C\uC218" : "\uACF5\uC9C0\uAD8C\uD55C \uBD80\uC5EC",
+            text: user.can_post_notice ? "공지권한 해제" : "공지권한 부여",
         });
         notice.addEventListener("click", () => setNoticePermission(user.user_id, !user.can_post_notice));
         actions.append(notice);
@@ -296,6 +301,17 @@ async function setNoticePermission(userId, canPostNotice) {
     }
 }
 
+async function grantAdmin(userId) {
+    if (!confirm("이 회원에게 관리자 권한을 부여하시겠습니까?")) return;
+    try {
+        await api(`/admin/users/${userId}/grant-admin`, { method: "POST" });
+        await refreshAdmin();
+        showToast("관리자 권한을 부여했습니다.");
+    } catch (error) {
+        showToast(error.message);
+    }
+}
+
 async function suspendUser(userId) {
     const days = Number(prompt("정지 일수", "7"));
     if (!days) return;
@@ -356,6 +372,10 @@ async function deleteClub(boardId) {
 
 qs("#admin-login-button").addEventListener("click", loginAdmin);
 qs("#refresh-admin-button").addEventListener("click", () => refreshAdmin().catch((error) => showToast(error.message)));
+qs("#admin-user-search-button").addEventListener("click", () => renderUsers().catch((error) => showToast(error.message)));
+qs("#admin-user-search").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") renderUsers().catch((error) => showToast(error.message));
+});
 document.querySelectorAll("[data-admin-tab]").forEach((button) => {
     button.addEventListener("click", () => switchAdminTab(button.dataset.adminTab));
 });

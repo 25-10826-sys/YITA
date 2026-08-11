@@ -49,8 +49,15 @@
 
             <section class="right-card admin-panel" id="admin-tab-users">
                 <div class="board-list-header">
-                    <h2>회원 관리</h2>
+                    <div>
+                        <h2>회원 관리</h2>
+                        <p class="hint">이름 또는 이메일로 회원을 검색하고 어드민 권한을 부여할 수 있습니다.</p>
+                    </div>
                     <button id="refresh-admin-button" type="button">새로고침</button>
+                </div>
+                <div class="admin-search-row">
+                    <input id="admin-user-search" type="search" placeholder="회원 검색(이름/이메일)">
+                    <button id="admin-user-search-button" type="button">검색</button>
                 </div>
                 <div id="admin-users" class="admin-table muted">회원 목록을 불러오는 중입니다.</div>
             </section>

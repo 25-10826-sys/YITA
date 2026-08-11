@@ -949,9 +949,16 @@ def create_club(data: ClubCreateInput, user: dict = Depends(get_current_user), c
 
 
 @app.get("/api/admin/users")
-def admin_users(_: dict = Depends(require_admin), conn: DbConnection = Depends(get_db)):
+def admin_users(q: Optional[str] = Query(None), _: dict = Depends(require_admin), conn: DbConnection = Depends(get_db)):
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM users ORDER BY user_id")
+    if q:
+        q = f"%{q.strip()}%"
+        cursor.execute(
+            "SELECT * FROM users WHERE name LIKE ? OR email LIKE ? ORDER BY user_id",
+            (q, q),
+        )
+    else:
+        cursor.execute("SELECT * FROM users ORDER BY user_id")
     return [public_user(dict(row)) for row in cursor.fetchall()]
 
 
@@ -961,6 +968,20 @@ def set_notice_permission(user_id: int, data: NoticePermissionInput, _: dict = D
     cursor.execute("UPDATE users SET can_post_notice = ? WHERE user_id = ?", (int(data.can_post_notice), user_id))
     conn.commit()
     return {"message": "공지 권한이 변경되었습니다."}
+
+
+@app.post("/api/admin/users/{user_id}/grant-admin")
+def grant_admin(user_id: int, _: dict = Depends(require_admin), conn: DbConnection = Depends(get_db)):
+    cursor = conn.cursor()
+    cursor.execute("SELECT user_id, role FROM users WHERE user_id = ?", (user_id,))
+    user = cursor.fetchone()
+    if user is None:
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+    if user["role"] == "admin":
+        raise HTTPException(status_code=409, detail="이미 관리자 권한이 있습니다.")
+    cursor.execute("UPDATE users SET role = 'admin' WHERE user_id = ?", (user_id,))
+    conn.commit()
+    return {"message": "관리자 권한이 부여되었습니다."}
 
 
 @app.post("/api/admin/users/{user_id}/suspend")
