@@ -454,17 +454,26 @@ textarea {
 .post-list {
     display: flex;
     flex-direction: column;
-    gap: 0;
+    gap: 8px;
 }
 
 .post-row,
 .preview-row,
 .hot-row {
-    background: #fcfcfc;
+    background: #fff;
     border: 1px solid #ececec;
-    border-radius: 8px;
-    margin-bottom: 8px;
-    padding: 12px 14px;
+    border-radius: 10px;
+    padding: 14px 16px;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.post-row:hover,
+.preview-row:hover,
+.hot-row:hover,
+.clickable-post-row:hover {
+    border-color: #c62917;
+    box-shadow: 0 8px 18px rgba(198, 41, 23, 0.09);
+    transform: translateY(-1px);
 }
 
 .post-row button,
@@ -474,11 +483,34 @@ textarea {
     border: 0;
     color: #222;
     display: block;
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 700;
     padding: 0;
     text-align: left;
     width: 100%;
+}
+
+.post-row-index {
+    align-items: center;
+    background: #f6e6e3;
+    border-radius: 999px;
+    color: #c62917;
+    display: inline-flex;
+    font-size: 12px;
+    font-weight: 700;
+    height: 24px;
+    justify-content: center;
+    margin-bottom: 10px;
+    min-width: 28px;
+    padding: 0 10px;
+}
+
+.clickable-post-row {
+    cursor: pointer;
+}
+
+.clickable-post-row .post-title {
+    cursor: pointer;
 }
 
 .post-title {
@@ -555,31 +587,6 @@ textarea {
 .board-list-header span {
     color: #999;
     font-size: 12px;
-}
-
-.post-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.post-row,
-.preview-row,
-.hot-row {
-    border-bottom: 1px solid #f1f1f1;
-    padding: 8px 0;
-}
-
-.post-row button,
-.preview-row button,
-.hot-row button {
-    background: transparent;
-    border: 0;
-    color: #222;
-    display: block;
-    font-weight: 700;
-    text-align: left;
-    width: 100%;
 }
 
 .button-list {

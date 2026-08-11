@@ -244,13 +244,30 @@ async function renderPostList() {
         return;
     }
     list.classList.remove("muted");
-    posts.forEach((post) => list.append(createPostRow(post, selectedBoardId, "post-row")));
+    posts.forEach((post, index) => list.append(createPostRow(post, selectedBoardId, "post-row", index + 1)));
 }
 
-function createPostRow(post, boardId, className) {
-    const row = make("article", { className: className ? `${className} post-row` : "post-row" });
+function createPostRow(post, boardId, className, index) {
+    const row = make("article", { className: className ? `${className} post-row clickable-post-row` : "post-row clickable-post-row" });
+    row.tabIndex = 0;
+    row.addEventListener("click", () => openArticleDetail(post.post_id, boardId));
+    row.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            openArticleDetail(post.post_id, boardId);
+        }
+    });
+
+    if (index !== undefined) {
+        const indexBadge = make("div", { className: "post-row-index", text: String(index) });
+        row.append(indexBadge);
+    }
+
     const title = make("button", { type: "button", className: "post-title", text: post.title });
-    title.addEventListener("click", () => openArticleDetail(post.post_id, boardId));
+    title.addEventListener("click", (event) => {
+        event.stopPropagation();
+        openArticleDetail(post.post_id, boardId);
+    });
 
     const snippet = make("p", { className: "post-snippet", text: post.content });
     const meta = make("div", { className: "post-row-meta" });
@@ -281,7 +298,7 @@ function renderHotPosts(posts = []) {
         return;
     }
     hotBox.classList.remove("muted");
-    hotPosts.forEach((post) => hotBox.append(createPostRow(post, post.board_id, "hot-row")));
+    hotPosts.forEach((post, index) => hotBox.append(createPostRow(post, post.board_id, "hot-row", index + 1)));
 }
 
 async function submitArticle() {
@@ -478,7 +495,7 @@ async function searchPosts() {
         return;
     }
     list.classList.remove("muted");
-    posts.forEach((post) => list.append(createPostRow(post, post.board_id, "post-row")));
+    posts.forEach((post, index) => list.append(createPostRow(post, post.board_id, "post-row", index + 1)));
 }
 
 async function refreshAll() {
