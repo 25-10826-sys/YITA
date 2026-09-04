@@ -37,7 +37,10 @@ STATIC_DIR = PROJECT_ROOT / "static"
 INDEX_FILE = PROJECT_ROOT / "index.html"
 ADMIN_FILE = PROJECT_ROOT / "admin.html"
 
+from starlette.middleware.gzip import GZipMiddleware
+
 app = FastAPI(title="YITA API")
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[origin.strip() for origin in os.getenv("CORS_ORIGINS", "*").split(",") if origin.strip()],
@@ -706,21 +709,25 @@ def get_home(conn: DbConnection = Depends(get_db)):
     cursor.execute("SELECT * FROM boards WHERE is_approved = 1 ORDER BY board_id")
     boards = [dict(row) for row in cursor.fetchall()]
 
-    previews = {}
-    for board_id in range(1, 5):
-        cursor.execute(
-            """
+    previews = {str(b_id): [] for b_id in range(1, 5)}
+    cursor.execute(
+        """
+        WITH ranked_posts AS (
             SELECT p.*, u.name as author_name,
-                   (SELECT COUNT(*) FROM comments WHERE post_id = p.post_id) as comment_count
+                   (SELECT COUNT(*) FROM comments WHERE post_id = p.post_id) as comment_count,
+                   ROW_NUMBER() OVER (PARTITION BY p.board_id ORDER BY p.created_at DESC) as rn
             FROM posts p
             JOIN users u ON p.user_id = u.user_id
-            WHERE p.board_id = ?
-            ORDER BY p.created_at DESC
-            LIMIT 3
-            """,
-            (board_id,),
+            WHERE p.board_id IN (1, 2, 3, 4)
         )
-        previews[str(board_id)] = [serialize_post(row) for row in cursor.fetchall()]
+        SELECT * FROM ranked_posts WHERE rn <= 3 ORDER BY created_at DESC
+        """
+    )
+    for row in cursor.fetchall():
+        post_dict = serialize_post(row)
+        b_key = str(post_dict["board_id"])
+        if b_key in previews:
+            previews[b_key].append(post_dict)
 
     cursor.execute(
         """

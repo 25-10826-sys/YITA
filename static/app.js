@@ -119,13 +119,20 @@ async function logout() {
 async function restoreSession() {
     if (authToken) {
         try {
-            sessionUser = await api("/auth/me");
+            const [user, home] = await Promise.all([
+                api("/auth/me"),
+                api("/home"),
+            ]);
+            sessionUser = user;
             applyLoginState();
+            applyHomeData(home);
         } catch (_) {
             clearSession();
+            await bootCommunity();
         }
+    } else {
+        await bootCommunity();
     }
-    await bootCommunity();
     await handleUrlRouting();
 }
 
@@ -154,13 +161,18 @@ function requireLogin() {
     return true;
 }
 
-async function bootCommunity() {
-    homeCache = await api("/home");
+function applyHomeData(home) {
+    homeCache = home;
     currentBoards = homeCache.boards;
     renderBoardDirectory();
     renderClubMenu();
     renderHotPosts(homeCache.hot_posts);
-    if (sessionUser && sessionUser.role === "admin") await syncAdminClubConsole();
+    if (sessionUser && sessionUser.role === "admin") syncAdminClubConsole().catch(() => {});
+}
+
+async function bootCommunity() {
+    homeCache = await api("/home");
+    applyHomeData(homeCache);
 }
 
 function boardKey(board) {
@@ -233,6 +245,16 @@ async function enterBoard(boardId, pushHistory = true) {
 
     if (pushHistory) updateUrlParams({ board: selectedBoardId });
     document.title = `${title} - YITA 이순신고 커뮤니티`;
+
+    // Stale-While-Revalidate: 홈 캐시의 미리보기 글이 있다면 즉시 먼저 렌더링 (0ms)
+    const cachedPreviews = homeCache?.previews?.[String(selectedBoardId)];
+    if (cachedPreviews && cachedPreviews.length > 0) {
+        const list = qs("#post-list");
+        list.replaceChildren();
+        list.classList.remove("muted");
+        qs("#post-list-count").textContent = `${cachedPreviews.length}개+`;
+        cachedPreviews.forEach((post, index) => list.append(createPostRow(post, selectedBoardId, "post-row", index + 1)));
+    }
 
     await renderPostList();
 }
