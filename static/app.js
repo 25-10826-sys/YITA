@@ -117,14 +117,16 @@ async function logout() {
 }
 
 async function restoreSession() {
-    if (!authToken) return;
-    try {
-        sessionUser = await api("/auth/me");
-        applyLoginState();
-        await bootCommunity();
-    } catch (_) {
-        clearSession();
+    if (authToken) {
+        try {
+            sessionUser = await api("/auth/me");
+            applyLoginState();
+        } catch (_) {
+            clearSession();
+        }
     }
+    await bootCommunity();
+    await handleUrlRouting();
 }
 
 function applyLoginState() {
@@ -158,7 +160,7 @@ async function bootCommunity() {
     renderBoardDirectory();
     renderClubMenu();
     renderHotPosts(homeCache.hot_posts);
-    if (sessionUser.role === "admin") await syncAdminClubConsole();
+    if (sessionUser && sessionUser.role === "admin") await syncAdminClubConsole();
 }
 
 function boardKey(board) {
@@ -214,29 +216,34 @@ function renderClubMenu() {
     });
 }
 
-async function enterBoard(boardId) {
-    if (!requireLogin()) return;
+async function enterBoard(boardId, pushHistory = true) {
     selectedBoardId = Number(boardId);
     const board = currentBoards.find((item) => item.board_id === selectedBoardId);
     qs("#board-directory").hidden = true;
     qs("#board-view").hidden = false;
     showWritePanel(false);
-    qs("#post-list-title").textContent = board ? boardTitle(board) : "게시판";
-    qs("#current-board-title").textContent = `${board ? boardTitle(board) : "게시판"} 글쓰기`;
+    const title = board ? boardTitle(board) : "게시판";
+    qs("#post-list-title").textContent = title;
+    qs("#current-board-title").textContent = `${title} 글쓰기`;
     qs("#article-detail-viewer").hidden = true;
     qs("#post-list").hidden = false;
 
-    const canWrite = !board || board.type !== "notice" || (sessionUser && (sessionUser.role === "admin" || sessionUser.can_post_notice));
-    qs("#open-write-button").style.display = canWrite ? "" : "none";
+    const canWrite = sessionUser && (!board || board.type !== "notice" || sessionUser.role === "admin" || sessionUser.can_post_notice);
+    qs("#open-write-button").style.display = canWrite ? "" : (sessionUser ? "none" : "");
+
+    if (pushHistory) updateUrlParams({ board: selectedBoardId });
+    document.title = `${title} - YITA 이순신고 커뮤니티`;
 
     await renderPostList();
 }
 
-function showDirectory() {
+function showDirectory(pushHistory = true) {
     selectedBoardId = null;
     qs("#board-view").hidden = true;
     qs("#board-directory").hidden = false;
     qs("#article-detail-viewer").hidden = true;
+    if (pushHistory) updateUrlParams({});
+    document.title = "YITA - 이순신고 커뮤니티";
 }
 
 async function renderPostList() {
@@ -334,7 +341,7 @@ async function submitArticle() {
     }
 }
 
-async function openArticleDetail(postId, boardId) {
+async function openArticleDetail(postId, boardId, pushHistory = true) {
     try {
         const detail = await api(`/posts/${postId}/detail`);
         if (boardId) {
@@ -346,7 +353,11 @@ async function openArticleDetail(postId, boardId) {
         qs("#board-view").hidden = false;
         qs("#write-panel").hidden = true;
         qs("#post-list").hidden = true;
-        renderArticle(detail.post, detail.comments, boardId);
+
+        if (pushHistory) updateUrlParams({ post: postId, board: selectedBoardId || boardId || "" });
+        document.title = `${detail.post.title} - YITA`;
+
+        renderArticle(detail.post, detail.comments, boardId || selectedBoardId);
     } catch (error) {
         showToast(error.message);
     }
@@ -506,8 +517,7 @@ async function syncAdminClubConsole() {
 
 let isSearching = false;
 
-async function searchPosts() {
-    if (!requireLogin()) return;
+async function searchPosts(pushHistory = true) {
     if (isSearching) return;
     const keyword = qs("#search-input").value.trim();
     isSearching = true;
@@ -520,8 +530,12 @@ async function searchPosts() {
         qs("#article-detail-viewer").hidden = true;
         qs("#post-list").hidden = false;
         qs("#open-write-button").style.display = "none";
-        qs("#post-list-title").textContent = keyword ? `"${keyword}" \uAC80\uC0C9 \uACB0\uACFC` : "\uC804\uCCB4 \uAC80\uC0C9";
+        qs("#post-list-title").textContent = keyword ? `"${keyword}" 검색 결과` : "전체 검색";
         qs("#post-list-count").textContent = `${posts.length}개`;
+
+        if (pushHistory) updateUrlParams(keyword ? { q: keyword } : {});
+        document.title = keyword ? `"${keyword}" 검색 결과 - YITA` : "전체 검색 - YITA";
+
         const list = qs("#post-list");
         list.replaceChildren();
         if (posts.length === 0) {
@@ -562,19 +576,27 @@ function bindEvents() {
     qs("#login-button").addEventListener("click", login);
     qs("#signup-button").addEventListener("click", signup);
     qs("#submit-post-button").addEventListener("click", submitArticle);
-    qs("#open-write-button").addEventListener("click", () => showWritePanel(true));
+    qs("#open-write-button").addEventListener("click", () => {
+        if (!requireLogin()) return;
+        showWritePanel(true);
+    });
     qs("#close-write-button").addEventListener("click", () => showWritePanel(false));
     qs("#profile-edit-button").addEventListener("click", () => showProfileEdit(true));
     qs("#close-profile-edit-button").addEventListener("click", () => showProfileEdit(false));
     qs("#save-profile-button").addEventListener("click", saveProfileChanges);
     qs("#club-request-button").addEventListener("click", requestNewClub);
     qs("#refresh-board-button").addEventListener("click", refreshAll);
-    qs("#back-directory-button").addEventListener("click", showDirectory);
+    qs("#back-directory-button").addEventListener("click", () => showDirectory(true));
     qs("#back-list-button").addEventListener("click", () => {
         qs("#article-detail-viewer").hidden = true;
         qs("#post-list").hidden = false;
         showWritePanel(false);
-        renderPostList();
+        if (selectedBoardId) {
+            updateUrlParams({ board: selectedBoardId });
+            renderPostList();
+        } else {
+            showDirectory(true);
+        }
     });
     qs("#top-login-indicator").addEventListener("click", () => {
         if (!sessionUser) qs("#u-email")?.focus();
@@ -582,10 +604,55 @@ function bindEvents() {
     qs("#search-input").addEventListener("keydown", (event) => {
         if (event.key === "Enter") {
             event.preventDefault();
-            searchPosts().catch((error) => showToast(error.message));
+            searchPosts(true).catch((error) => showToast(error.message));
         }
     });
 }
+
+function updateUrlParams(params) {
+    const url = new URL(window.location);
+    url.search = "";
+    Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== "") {
+            url.searchParams.set(key, String(value));
+        }
+    });
+    window.history.pushState(params, "", url.toString());
+}
+
+async function handleUrlRouting() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const postId = urlParams.get("post");
+    const boardId = urlParams.get("board");
+    const query = urlParams.get("q");
+
+    if (postId) {
+        await openArticleDetail(Number(postId), boardId ? Number(boardId) : null, false);
+    } else if (boardId) {
+        await enterBoard(Number(boardId), false);
+    } else if (query) {
+        qs("#search-input").value = query;
+        await searchPosts(false);
+    }
+}
+
+window.addEventListener("popstate", async () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const postId = urlParams.get("post");
+    const boardId = urlParams.get("board");
+    const query = urlParams.get("q");
+
+    if (postId) {
+        await openArticleDetail(Number(postId), boardId ? Number(boardId) : null, false);
+    } else if (boardId) {
+        await enterBoard(Number(boardId), false);
+    } else if (query) {
+        qs("#search-input").value = query;
+        await searchPosts(false);
+    } else {
+        showDirectory(false);
+    }
+});
 
 function showWritePanel(show) {
     qs("#write-panel").hidden = !show;
