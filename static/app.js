@@ -321,6 +321,7 @@ async function submitArticle() {
         qs("#form-title").value = "";
         qs("#form-content").value = "";
         qs("#form-anon").checked = false;
+        showWritePanel(false);
         await refreshAll();
         showToast("게시글이 등록되었습니다.");
     } catch (error) {
@@ -481,6 +482,7 @@ async function syncAdminClubConsole() {
 
 async function searchPosts() {
     if (!requireLogin()) return;
+    selectedBoardId = null;
     const keyword = qs("#search-input").value.trim();
     const posts = await api(`/posts?q=${encodeURIComponent(keyword)}`);
     qs("#board-directory").hidden = true;
@@ -540,7 +542,10 @@ function bindEvents() {
         renderPostList();
     });
     qs("#search-input").addEventListener("keydown", (event) => {
-        if (event.key === "Enter") searchPosts().catch((error) => showToast(error.message));
+        if (event.key === "Enter") {
+            event.preventDefault();
+            searchPosts().catch((error) => showToast(error.message));
+        }
     });
 }
 
