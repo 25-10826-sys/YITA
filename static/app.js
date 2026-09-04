@@ -221,9 +221,14 @@ async function enterBoard(boardId) {
     qs("#board-directory").hidden = true;
     qs("#board-view").hidden = false;
     showWritePanel(false);
-    qs("#post-list-title").textContent = board ? boardTitle(board) : "\uAC8C\uC2DC\uD310";
-    qs("#current-board-title").textContent = `${board ? boardTitle(board) : "\uAC8C\uC2DC\uD310"} \uAE00\uC4F0\uAE30`;
+    qs("#post-list-title").textContent = board ? boardTitle(board) : "게시판";
+    qs("#current-board-title").textContent = `${board ? boardTitle(board) : "게시판"} 글쓰기`;
     qs("#article-detail-viewer").hidden = true;
+    qs("#post-list").hidden = false;
+
+    const canWrite = !board || board.type !== "notice" || (sessionUser && (sessionUser.role === "admin" || sessionUser.can_post_notice));
+    qs("#open-write-button").style.display = canWrite ? "" : "none";
+
     await renderPostList();
 }
 
@@ -332,6 +337,15 @@ async function submitArticle() {
 async function openArticleDetail(postId, boardId) {
     try {
         const detail = await api(`/posts/${postId}/detail`);
+        if (boardId) {
+            selectedBoardId = Number(boardId);
+            const board = currentBoards.find((item) => item.board_id === selectedBoardId);
+            if (board) qs("#post-list-title").textContent = boardTitle(board);
+        }
+        qs("#board-directory").hidden = true;
+        qs("#board-view").hidden = false;
+        qs("#write-panel").hidden = true;
+        qs("#post-list").hidden = true;
         renderArticle(detail.post, detail.comments, boardId);
     } catch (error) {
         showToast(error.message);
@@ -394,7 +408,6 @@ async function likePost(postId, boardId) {
     try {
         await api(`/posts/${postId}/like`, { method: "POST" });
         await openArticleDetail(postId, boardId);
-        refreshAll().catch(() => {});
     } catch (error) {
         showToast(error.message);
     }
@@ -416,17 +429,23 @@ async function reportPost(postId, boardId) {
 }
 
 async function submitReply(postId, boardId) {
+    const input = qs("#reply-input");
+    const content = input ? input.value.trim() : "";
+    if (!content) {
+        showToast("댓글 내용을 입력해주세요.");
+        return;
+    }
     try {
         await api("/comments", {
             method: "POST",
             body: JSON.stringify({
                 post_id: postId,
-                content: qs("#reply-input").value,
+                content: content,
                 is_anonymous: qs("#reply-anon").checked,
             }),
         });
+        if (input) input.value = "";
         await openArticleDetail(postId, boardId);
-        refreshAll().catch(() => {});
     } catch (error) {
         showToast(error.message);
     }
@@ -444,10 +463,15 @@ async function deletePost(postId) {
 }
 
 async function requestNewClub() {
+    const clubName = qs("#new-club-name").value.trim();
+    if (!clubName) {
+        showToast("소모임 이름을 입력해주세요.");
+        return;
+    }
     try {
         await api("/boards/club", {
             method: "POST",
-            body: JSON.stringify({ club_name: qs("#new-club-name").value }),
+            body: JSON.stringify({ club_name: clubName }),
         });
         qs("#new-club-name").value = "";
         showToast("소모임 개설 요청이 접수되었습니다.");
@@ -480,26 +504,36 @@ async function syncAdminClubConsole() {
     });
 }
 
+let isSearching = false;
+
 async function searchPosts() {
     if (!requireLogin()) return;
-    selectedBoardId = null;
+    if (isSearching) return;
     const keyword = qs("#search-input").value.trim();
-    const posts = await api(`/posts?q=${encodeURIComponent(keyword)}`);
-    qs("#board-directory").hidden = true;
-    qs("#board-view").hidden = false;
-    qs("#write-panel").hidden = true;
-    qs("#article-detail-viewer").hidden = true;
-    qs("#post-list-title").textContent = keyword ? `"${keyword}" \uAC80\uC0C9 \uACB0\uACFC` : "\uC804\uCCB4 \uAC80\uC0C9";
-    qs("#post-list-count").textContent = `${posts.length}개`;
-    const list = qs("#post-list");
-    list.replaceChildren();
-    if (posts.length === 0) {
-        list.textContent = "검색 결과가 없습니다.";
-        list.classList.add("muted");
-        return;
+    isSearching = true;
+    try {
+        selectedBoardId = null;
+        const posts = await api(`/posts?q=${encodeURIComponent(keyword)}`);
+        qs("#board-directory").hidden = true;
+        qs("#board-view").hidden = false;
+        qs("#write-panel").hidden = true;
+        qs("#article-detail-viewer").hidden = true;
+        qs("#post-list").hidden = false;
+        qs("#open-write-button").style.display = "none";
+        qs("#post-list-title").textContent = keyword ? `"${keyword}" \uAC80\uC0C9 \uACB0\uACFC` : "\uC804\uCCB4 \uAC80\uC0C9";
+        qs("#post-list-count").textContent = `${posts.length}개`;
+        const list = qs("#post-list");
+        list.replaceChildren();
+        if (posts.length === 0) {
+            list.textContent = "검색 결과가 없습니다.";
+            list.classList.add("muted");
+            return;
+        }
+        list.classList.remove("muted");
+        posts.forEach((post, index) => list.append(createPostRow(post, post.board_id, "post-row", index + 1)));
+    } finally {
+        isSearching = false;
     }
-    list.classList.remove("muted");
-    posts.forEach((post, index) => list.append(createPostRow(post, post.board_id, "post-row", index + 1)));
 }
 
 async function refreshAll() {
@@ -538,8 +572,12 @@ function bindEvents() {
     qs("#back-directory-button").addEventListener("click", showDirectory);
     qs("#back-list-button").addEventListener("click", () => {
         qs("#article-detail-viewer").hidden = true;
+        qs("#post-list").hidden = false;
         showWritePanel(false);
         renderPostList();
+    });
+    qs("#top-login-indicator").addEventListener("click", () => {
+        if (!sessionUser) qs("#u-email")?.focus();
     });
     qs("#search-input").addEventListener("keydown", (event) => {
         if (event.key === "Enter") {
@@ -552,23 +590,21 @@ function bindEvents() {
 function showWritePanel(show) {
     qs("#write-panel").hidden = !show;
     qs("#post-list").hidden = show;
-    qs("#article-detail-viewer").hidden = show;
+    qs("#article-detail-viewer").hidden = true;
     if (show) {
         qs("#current-board-title").textContent = `${qs("#post-list-title").textContent} 글쓰기`;
         qs("#form-title").focus();
-    } else {
-        if (selectedBoardId) renderPostList();
     }
 }
 
 function showProfileEdit(show) {
     qs("#profile-edit-panel").hidden = !show;
-    qs("#board-directory").hidden = show;
-    qs("#board-view").hidden = show;
-    qs("#post-list").hidden = show;
-    qs("#article-detail-viewer").hidden = show;
-    qs("#write-panel").hidden = true;
     if (show) {
+        qs("#board-directory").hidden = true;
+        qs("#board-view").hidden = true;
+        qs("#post-list").hidden = true;
+        qs("#article-detail-viewer").hidden = true;
+        qs("#write-panel").hidden = true;
         if (!sessionUser) {
             showToast("로그인이 필요합니다.");
             return;
@@ -580,6 +616,7 @@ function showProfileEdit(show) {
     } else {
         if (selectedBoardId) {
             qs("#board-view").hidden = false;
+            qs("#post-list").hidden = false;
         } else {
             qs("#board-directory").hidden = false;
         }
