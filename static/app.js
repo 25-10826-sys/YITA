@@ -67,22 +67,83 @@ function clearSession() {
     localStorage.removeItem(TOKEN_KEY);
 }
 
+let currentAuthRole = "student";
+
+function switchAuthRole(role) {
+    currentAuthRole = role;
+    const isTeacher = role === "teacher";
+    qs("#role-tab-student")?.classList.toggle("active", !isTeacher);
+    qs("#role-tab-teacher")?.classList.toggle("active", isTeacher);
+
+    const titleEl = qs("#login-card-title");
+    const descEl = qs("#login-card-desc");
+    const emailInput = qs("#u-email");
+    const gradeLabel = qs("#u-grade-label");
+    const officeLabel = qs("#u-office-label");
+
+    if (isTeacher) {
+        if (titleEl) titleEl.textContent = "선생님 로그인";
+        if (descEl) descEl.textContent = "일반 이메일로 가입할 수 있으며, 관리자 승인 후 이용 가능합니다.";
+        if (emailInput) emailInput.placeholder = "이메일 (예: teacher@gmail.com)";
+        if (gradeLabel) gradeLabel.hidden = true;
+        if (officeLabel) officeLabel.hidden = false;
+    } else {
+        if (titleEl) titleEl.textContent = "학생 로그인";
+        if (descEl) descEl.textContent = "학교 이메일(@yisunsin.cnehs.kr)로 로그인 및 회원가입할 수 있습니다.";
+        if (emailInput) emailInput.placeholder = "student@yisunsin.cnehs.kr";
+        if (gradeLabel) gradeLabel.hidden = false;
+        if (officeLabel) officeLabel.hidden = true;
+    }
+}
+
 function readAuthForm() {
     return {
+        role: currentAuthRole,
         email: qs("#u-email").value.trim(),
         password: qs("#u-password").value,
         name: qs("#u-name").value.trim(),
-        grade: Number(qs("#u-grade").value),
+        grade: Number(qs("#u-grade") ? qs("#u-grade").value : 1),
+        office: qs("#u-office") ? qs("#u-office").value.trim() : "",
     };
 }
 
 async function signup() {
     const data = readAuthForm();
+    if (!data.email) {
+        showToast("이메일을 입력해주세요.");
+        return;
+    }
+    if (!data.password) {
+        showToast("비밀번호를 입력해주세요.");
+        return;
+    }
+    if (!data.name) {
+        showToast("이름을 입력해주세요.");
+        return;
+    }
+    if (data.role === "teacher") {
+        if (!data.office || data.office.length < 2) {
+            showToast("교무실을 2자 이상 입력해주세요.");
+            return;
+        }
+    } else {
+        if (!data.email.endsWith("@yisunsin.cnehs.kr")) {
+            showToast("학생은 학교 계정(@yisunsin.cnehs.kr)만 사용할 수 있습니다.");
+            return;
+        }
+    }
+
     try {
-        saveAuth(await api("/auth/signup", {
+        const res = await api("/auth/signup", {
             method: "POST",
             body: JSON.stringify(data),
-        }));
+        });
+        if (res.pending) {
+            showToast(res.message || "선생님 회원가입 신청이 완료되었습니다. 관리자 승인 후 로그인할 수 있습니다.");
+            qs("#u-password").value = "";
+            return;
+        }
+        saveAuth(res);
         applyLoginState();
         await bootCommunity();
         showToast("회원가입이 완료되었습니다.");
@@ -93,6 +154,18 @@ async function signup() {
 
 async function login() {
     const data = readAuthForm();
+    if (!data.email) {
+        showToast("이메일을 입력해주세요.");
+        return;
+    }
+    if (!data.password) {
+        showToast("비밀번호를 입력해주세요.");
+        return;
+    }
+    if (data.role === "student" && !data.email.endsWith("@yisunsin.cnehs.kr") && data.email !== "admin") {
+        showToast("학생 로그인은 학교 계정(@yisunsin.cnehs.kr)만 가능합니다. 선생님이시라면 상단 [선생님] 탭을 눌러주세요.");
+        return;
+    }
     try {
         saveAuth(await api("/auth/login", {
             method: "POST",
@@ -140,16 +213,30 @@ function applyLoginState() {
     qs("#login-card").hidden = true;
     qs("#profile-card").hidden = false;
     qs("#profile-edit-button").hidden = false;
-    qs("#top-login-indicator").textContent = sessionUser.role === "admin" ? "\uAD00\uB9AC\uC790 \uB85C\uADF8\uC778" : "\uB85C\uADF8\uC778 \uC644\uB8CC";
+
+    let indicatorText = "로그인 완료";
+    if (sessionUser.role === "admin") {
+        indicatorText = "관리자 로그인";
+    } else if (sessionUser.role === "teacher") {
+        indicatorText = "선생님 로그인";
+    }
+    qs("#top-login-indicator").textContent = indicatorText;
     qs("#top-login-indicator").onclick = logout;
     qs("#profile-edit-button").onclick = () => showProfileEdit(true);
     qs("#display-name").textContent = sessionUser.name;
-    qs("#display-grade").textContent = `이순신고등학교 ${sessionUser.grade}학년`;
-    qs("#display-role").textContent = sessionUser.role === "admin"
-        ? "\uAD00\uB9AC\uC790 \u00B7 \uBAA8\uB4E0 \uAC8C\uC2DC\uD310 \uAD00\uB9AC \uAC00\uB2A5"
-        : sessionUser.can_post_notice
-            ? "\uD559\uC0DD \u00B7 \uACF5\uC9C0 \uC791\uC131 \uAD8C\uD55C \uC788\uC74C"
-            : "\uD559\uC0DD";
+
+    if (sessionUser.role === "teacher") {
+        qs("#display-grade").textContent = `이순신고등학교 교사 · ${sessionUser.office || "교무실"}`;
+        qs("#display-role").textContent = "선생님 · 공지 작성 및 전 학년 게시판 이용 가능";
+    } else if (sessionUser.role === "admin") {
+        qs("#display-grade").textContent = `이순신고등학교 관리자`;
+        qs("#display-role").textContent = "관리자 · 모든 게시판 관리 가능";
+    } else {
+        qs("#display-grade").textContent = `이순신고등학교 ${sessionUser.grade}학년`;
+        qs("#display-role").textContent = sessionUser.can_post_notice
+            ? "학생 · 공지 작성 권한 있음"
+            : "학생";
+    }
     qs("#admin-card").hidden = sessionUser.role !== "admin";
 }
 
@@ -612,6 +699,8 @@ function formatDate(value) {
 }
 
 function bindEvents() {
+    qs("#role-tab-student")?.addEventListener("click", () => switchAuthRole("student"));
+    qs("#role-tab-teacher")?.addEventListener("click", () => switchAuthRole("teacher"));
     qs("#login-button").addEventListener("click", login);
     qs("#signup-button").addEventListener("click", signup);
     qs("#submit-post-button").addEventListener("click", submitArticle);

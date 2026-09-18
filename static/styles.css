@@ -190,11 +190,40 @@ header {
 
 .admin-actions button,
 .admin-row > button,
-#refresh-admin-button {
+#refresh-admin-button,
+#refresh-teachers-button {
     background: #fafafa;
     border: 1px solid #ddd;
     border-radius: 4px;
     padding: 5px 9px;
+}
+
+.btn-approve {
+    background: #e6f4ea !important;
+    border-color: #34a853 !important;
+    color: #1e7e34 !important;
+    font-weight: 600;
+}
+
+.btn-approve:hover {
+    background: #d0ebd8 !important;
+}
+
+.badge-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    background: #e53935;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    vertical-align: middle;
+    margin-left: 4px;
 }
 
 .admin-panel {
@@ -245,6 +274,49 @@ header {
 .board-list-header h2 {
     font-size: 15px;
     margin-bottom: 10px;
+}
+
+.login-role-tabs {
+    background: #eef2f8;
+    border-radius: 8px;
+    display: flex;
+    gap: 6px;
+    margin-bottom: 12px;
+    padding: 4px;
+}
+
+.role-tab {
+    background: transparent;
+    border: 0;
+    border-radius: 6px;
+    color: #555;
+    flex: 1;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 7px 10px;
+    transition: all 0.15s;
+}
+
+.role-tab.active {
+    background: #fff;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+    color: #1b3b6f;
+}
+
+.badge-count {
+    background: #c62917;
+    border-radius: 999px;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    margin-left: 4px;
+    padding: 2px 6px;
+}
+
+.btn-approve {
+    background: #1b3b6f !important;
+    border-color: #1b3b6f !important;
+    color: #fff !important;
 }
 
 .login-card p,

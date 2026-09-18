@@ -236,6 +236,8 @@ def init_db():
             can_post_notice INTEGER NOT NULL DEFAULT 0,
             timeout_until TEXT,
             suspend_reason TEXT,
+            office TEXT,
+            is_approved INTEGER NOT NULL DEFAULT 1,
             created_at TEXT NOT NULL DEFAULT {now_default}
         )
         """
@@ -335,6 +337,8 @@ def init_db():
         ("users", "password_hash", "TEXT"),
         ("users", "can_post_notice", "INTEGER NOT NULL DEFAULT 0"),
         ("users", "suspend_reason", "TEXT"),
+        ("users", "office", "TEXT"),
+        ("users", "is_approved", "INTEGER NOT NULL DEFAULT 1"),
         ("users", "created_at", add_created_at),
         ("boards", "club_name", "TEXT"),
         ("boards", "is_approved", "INTEGER NOT NULL DEFAULT 1"),
@@ -404,18 +408,12 @@ def seed_admin(cursor: DbCursor):
 
 
 class SignupInput(BaseModel):
+    role: str = "student"
     email: str
     name: str
-    grade: int = Field(ge=1, le=3)
+    grade: Optional[int] = 1
+    office: Optional[str] = None
     password: str = Field(min_length=6, max_length=80)
-
-    @field_validator("email")
-    @classmethod
-    def validate_email(cls, value: str) -> str:
-        value = value.strip().lower()
-        if not value.endswith(f"@{SCHOOL_DOMAIN}"):
-            raise ValueError(f"학교 계정(@{SCHOOL_DOMAIN})만 사용할 수 있습니다.")
-        return value
 
     @field_validator("name")
     @classmethod
@@ -524,9 +522,12 @@ def public_user(user: dict):
         "name": user["name"],
         "grade": user["grade"],
         "role": user["role"],
+        "office": user.get("office"),
+        "is_approved": int(user.get("is_approved", 1)),
         "can_post_notice": bool(user.get("can_post_notice", 0)),
         "timeout_until": user.get("timeout_until"),
         "suspend_reason": user.get("suspend_reason"),
+        "created_at": user.get("created_at"),
     }
 
 
@@ -625,9 +626,9 @@ def ensure_can_write_board(board: dict, user: dict):
     if board["is_approved"] != 1:
         raise HTTPException(status_code=403, detail="아직 승인되지 않은 게시판입니다.")
     grade_map = {"grade_1": 1, "grade_2": 2, "grade_3": 3}
-    if board["type"] in grade_map and user["grade"] != grade_map[board["type"]]:
+    if board["type"] in grade_map and user["role"] not in ("admin", "teacher") and user["grade"] != grade_map[board["type"]]:
         raise HTTPException(status_code=403, detail=f"{grade_map[board['type']]}학년만 작성할 수 있습니다.")
-    if board["type"] == "notice" and user["role"] != "admin" and not user.get("can_post_notice"):
+    if board["type"] == "notice" and user["role"] not in ("admin", "teacher") and not user.get("can_post_notice"):
         raise HTTPException(status_code=403, detail="공지 작성 권한이 없습니다.")
 
 
@@ -650,17 +651,45 @@ def health():
 def signup(data: SignupInput, conn: DbConnection = Depends(get_db)):
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT user_id FROM users WHERE email = ?", (data.email,))
+        email = data.email.strip().lower()
+        if "@" not in email or "." not in email.split("@")[-1]:
+            raise HTTPException(status_code=400, detail="유효한 이메일 주소를 입력해주세요.")
+
+        role = "teacher" if data.role == "teacher" else "student"
+
+        if role == "student":
+            if not email.endswith(f"@{SCHOOL_DOMAIN}"):
+                raise HTTPException(status_code=400, detail=f"학생은 학교 계정(@{SCHOOL_DOMAIN})만 사용할 수 있습니다.")
+            grade = data.grade if data.grade in (1, 2, 3) else 1
+            office = None
+            is_approved = 1
+            can_post_notice = 0
+        else:
+            if not data.office or len(data.office.strip()) < 2:
+                raise HTTPException(status_code=400, detail="교무실 정보를 2자 이상 입력해주세요.")
+            office = clean_text(data.office, "교무실", 2, 50)
+            grade = 0
+            is_approved = 0  # Pending admin approval
+            can_post_notice = 1
+
+        cursor.execute("SELECT user_id FROM users WHERE email = ?", (email,))
         if cursor.fetchone():
             raise HTTPException(status_code=409, detail="이미 가입된 이메일입니다.")
         cursor.execute(
             """
-            INSERT INTO users (email, name, grade, password_hash, role, can_post_notice)
-            VALUES (?, ?, ?, ?, 'student', 0)
+            INSERT INTO users (email, name, grade, password_hash, role, can_post_notice, office, is_approved)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (data.email, data.name, data.grade, hash_password(data.password)),
+            (email, data.name, grade, hash_password(data.password), role, can_post_notice, office, is_approved),
         )
         conn.commit()
+
+        if role == "teacher":
+            return {
+                "message": "선생님 회원가입 신청이 완료되었습니다. 관리자 승인 후 로그인할 수 있습니다.",
+                "pending": True,
+            }
+
         cursor.execute("SELECT * FROM users WHERE user_id = ?", (cursor.lastrowid,))
         user = dict(cursor.fetchone())
         payload = auth_response(user, cursor)
@@ -681,6 +710,8 @@ def login(data: LoginInput, conn: DbConnection = Depends(get_db)):
     if user is None or not verify_password(data.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="이메일 또는 비밀번호가 올바르지 않습니다.")
     user = dict(user)
+    if user.get("role") == "teacher" and user.get("is_approved", 1) == 0:
+        raise HTTPException(status_code=403, detail="승인 대기 중인 선생님 계정입니다. 관리자 승인 후 로그인할 수 있습니다.")
     if is_user_suspended(user):
         raise HTTPException(status_code=403, detail=get_suspend_error_message(user))
     payload = auth_response(user, cursor)
@@ -1167,3 +1198,34 @@ def delete_board(board_id: int, _: dict = Depends(require_admin), conn: DbConnec
     cursor.execute("DELETE FROM boards WHERE board_id = ?", (board_id,))
     conn.commit()
     return {"message": "소모임이 삭제되었습니다."}
+
+
+@app.get("/api/admin/pending-teachers")
+def get_pending_teachers(_: dict = Depends(require_admin), conn: DbConnection = Depends(get_db)):
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE role = 'teacher' AND is_approved = 0 ORDER BY user_id DESC")
+    return [public_user(dict(row)) for row in cursor.fetchall()]
+
+
+@app.post("/api/admin/teachers/{user_id}/approve")
+def approve_teacher(user_id: int, _: dict = Depends(require_admin), conn: DbConnection = Depends(get_db)):
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
+    user = cursor.fetchone()
+    if not user:
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+    cursor.execute("UPDATE users SET is_approved = 1, can_post_notice = 1 WHERE user_id = ?", (user_id,))
+    conn.commit()
+    return {"message": "선생님 계정이 승인되었습니다."}
+
+
+@app.delete("/api/admin/teachers/{user_id}")
+def reject_teacher(user_id: int, _: dict = Depends(require_admin), conn: DbConnection = Depends(get_db)):
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
+    user = cursor.fetchone()
+    if not user:
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+    cursor.execute("DELETE FROM users WHERE user_id = ?", (user_id,))
+    conn.commit()
+    return {"message": "선생님 가입 요청이 거절(삭제)되었습니다."}

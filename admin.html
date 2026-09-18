@@ -42,10 +42,22 @@
         <section id="admin-dashboard" hidden>
             <div class="tab-bar" role="tablist" aria-label="관리자 탭">
                 <button class="tab-button active" data-admin-tab="users" type="button">회원 관리</button>
+                <button class="tab-button" data-admin-tab="teachers" type="button">선생님 승인 대기 <span id="pending-teachers-count" class="badge-count" hidden>0</span></button>
                 <button class="tab-button" data-admin-tab="reported" type="button">신고받은 계정</button>
                 <button class="tab-button" data-admin-tab="reports" type="button">신고 목록</button>
                 <button class="tab-button" data-admin-tab="clubs" type="button">소모임 관리</button>
             </div>
+
+            <section class="right-card admin-panel" id="admin-tab-teachers" hidden>
+                <div class="board-list-header">
+                    <div>
+                        <h2>선생님 가입 승인 대기</h2>
+                        <p class="hint">선생님 가입 신청(이름, 이메일, 소속 교무실, 신청일시)을 확인하고 승인하거나 거절(삭제)할 수 있습니다.</p>
+                    </div>
+                    <button id="refresh-teachers-button" type="button">새로고침</button>
+                </div>
+                <div id="admin-pending-teachers" class="admin-table muted">승인 대기 중인 선생님 계정이 없습니다.</div>
+            </section>
 
             <section class="right-card admin-panel" id="admin-tab-users">
                 <div class="board-list-header">

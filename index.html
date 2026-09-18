@@ -64,27 +64,35 @@
     <main class="main-wrapper community-layout">
         <aside class="left-sidebar">
             <section class="login-card" id="login-card">
-                <h2>로그인</h2>
-                <p>학교 이메일로 가입한 뒤 커뮤니티를 이용할 수 있습니다.</p>
+                <div class="login-role-tabs" role="tablist" aria-label="로그인 유형">
+                    <button class="role-tab active" id="role-tab-student" type="button" data-role="student">학생</button>
+                    <button class="role-tab" id="role-tab-teacher" type="button" data-role="teacher">선생님</button>
+                </div>
+                <h2 id="login-card-title">학생 로그인</h2>
+                <p id="login-card-desc">학교 이메일(@yisunsin.cnehs.kr)로 로그인 및 회원가입할 수 있습니다.</p>
                 <label>
                     이메일
-                    <input type="email" id="u-email" value="student@yisunsin.cnehs.kr" autocomplete="email">
+                    <input type="email" id="u-email" placeholder="student@yisunsin.cnehs.kr" autocomplete="email">
                 </label>
                 <label>
                     비밀번호
-                    <input type="password" id="u-password" autocomplete="current-password">
+                    <input type="password" id="u-password" placeholder="비밀번호" autocomplete="current-password">
                 </label>
                 <label>
-                    이름
-                    <input type="text" id="u-name" value="이순신" maxlength="30">
+                    이름 (가입 시)
+                    <input type="text" id="u-name" placeholder="이름" maxlength="30">
                 </label>
-                <label>
-                    학년
+                <label id="u-grade-label">
+                    학년 (가입 시)
                     <select id="u-grade">
                         <option value="1">1학년</option>
                         <option value="2">2학년</option>
                         <option value="3">3학년</option>
                     </select>
+                </label>
+                <label id="u-office-label" hidden>
+                    소속 교무실 (가입 시)
+                    <input type="text" id="u-office" placeholder="예: 본관 2층 1교무실" maxlength="50">
                 </label>
                 <button class="btn-navy-login" id="login-button" type="button">로그인</button>
                 <button class="btn-sub-login" id="signup-button" type="button">회원가입</button>

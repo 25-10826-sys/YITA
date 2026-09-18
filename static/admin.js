@@ -184,9 +184,6 @@ async function logoutAdmin() {
     }
 }
 
-async function refreshAdmin() {
-    await Promise.all([renderUsers(), renderReportedUsers(), renderReports(), renderClubs()]);
-}
 
 function switchAdminTab(tabName) {
     document.querySelectorAll("[data-admin-tab]").forEach((button) => {
@@ -218,7 +215,9 @@ function createUserRow(user) {
         make("strong", { text: `${user.name} (${user.email})` }),
         make("p", {
             className: "post-meta",
-            text: `${user.grade}학년 · ${user.role} · 공지권한 ${user.can_post_notice ? "있음" : "없음"}${user.timeout_until ? ` · 정지중: ${formatSuspendStatus(user)}` : ""}`,
+            text: user.role === "teacher"
+                ? `교사 · 교무실: ${user.office || "미입력"} · 공지권한 ${user.can_post_notice ? "있음" : "없음"}${user.timeout_until ? ` · 정지중: ${formatSuspendStatus(user)}` : ""}`
+                : `${user.grade}학년 · ${user.role} · 공지권한 ${user.can_post_notice ? "있음" : "없음"}${user.timeout_until ? ` · 정지중: ${formatSuspendStatus(user)}` : ""}`,
         }),
     );
 
@@ -442,8 +441,83 @@ async function deleteClub(boardId) {
     }
 }
 
+async function renderPendingTeachers() {
+    const teachers = await api("/admin/pending-teachers");
+    const box = qs("#admin-pending-teachers");
+    box.replaceChildren();
+
+    // Update badge count
+    const badge = qs("#pending-teachers-count");
+    if (badge) {
+        if (teachers.length > 0) {
+            badge.textContent = teachers.length;
+            badge.hidden = false;
+        } else {
+            badge.hidden = true;
+        }
+    }
+
+    if (teachers.length === 0) {
+        box.textContent = "승인 대기 중인 선생님 계정이 없습니다.";
+        box.classList.add("muted");
+        return;
+    }
+    box.classList.remove("muted");
+
+    teachers.forEach((teacher) => {
+        const row = make("div", { className: "admin-row" });
+        const info = make("div");
+        const joinTime = teacher.created_at ? formatKoreanDateTime(teacher.created_at) : "-";
+        info.append(
+            make("strong", { text: `${teacher.name} (${teacher.email})` }),
+            make("p", {
+                className: "post-meta",
+                text: `교사 · 교무실: ${teacher.office || "미입력"} · 신청일시: ${joinTime}`,
+            }),
+        );
+
+        const actions = make("div", { className: "admin-actions" });
+        const approve = make("button", { type: "button", text: "승인" });
+        approve.classList.add("btn-approve");
+        approve.addEventListener("click", () => approveTeacher(teacher.user_id, teacher.name));
+        const reject = make("button", { type: "button", text: "거절" });
+        reject.classList.add("danger");
+        reject.addEventListener("click", () => rejectTeacher(teacher.user_id, teacher.name));
+        actions.append(approve, reject);
+        row.append(info, actions);
+        box.append(row);
+    });
+}
+
+async function approveTeacher(userId, name) {
+    if (!confirm(`${name || "선생님"} 계정을 승인하시겠습니까?`)) return;
+    try {
+        await api(`/admin/teachers/${userId}/approve`, { method: "POST" });
+        await refreshAdmin();
+        showToast("선생님 계정이 승인되었습니다.");
+    } catch (error) {
+        showToast(error.message);
+    }
+}
+
+async function rejectTeacher(userId, name) {
+    if (!confirm(`${name || "선생님"} 가입 요청을 거절(삭제)하시겠습니까?`)) return;
+    try {
+        await api(`/admin/teachers/${userId}`, { method: "DELETE" });
+        await refreshAdmin();
+        showToast("선생님 가입 요청이 거절되었습니다.");
+    } catch (error) {
+        showToast(error.message);
+    }
+}
+
+async function refreshAdmin() {
+    await Promise.all([renderUsers(), renderPendingTeachers(), renderReportedUsers(), renderReports(), renderClubs()]);
+}
+
 qs("#admin-login-button").addEventListener("click", loginAdmin);
 qs("#refresh-admin-button").addEventListener("click", () => refreshAdmin().catch((error) => showToast(error.message)));
+qs("#refresh-teachers-button")?.addEventListener("click", () => renderPendingTeachers().catch((error) => showToast(error.message)));
 qs("#admin-user-search-button").addEventListener("click", () => renderUsers().catch((error) => showToast(error.message)));
 qs("#admin-user-search").addEventListener("keydown", (event) => {
     if (event.key === "Enter") renderUsers().catch((error) => showToast(error.message));
