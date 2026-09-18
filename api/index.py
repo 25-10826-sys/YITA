@@ -357,6 +357,7 @@ def init_db():
 
 def seed_boards(cursor: DbCursor):
     seeds = [
+        ("all", None, None, 1),
         ("grade_1", None, None, 1),
         ("grade_2", None, None, 1),
         ("grade_3", None, None, 1),
@@ -396,14 +397,6 @@ def seed_boards(cursor: DbCursor):
         cursor.execute("UPDATE posts SET board_id = ? WHERE board_id = ?", (canonical_notice_id, legacy_board_id))
         cursor.execute("DELETE FROM boards WHERE board_id = ?", (legacy_board_id,))
 
-    cursor.execute("SELECT board_id FROM boards WHERE type = 'all'")
-    for row in cursor.fetchall():
-        board_id = row[0]
-        cursor.execute("DELETE FROM comments WHERE post_id IN (SELECT post_id FROM posts WHERE board_id = ?)", (board_id,))
-        cursor.execute("DELETE FROM post_likes WHERE post_id IN (SELECT post_id FROM posts WHERE board_id = ?)", (board_id,))
-        cursor.execute("DELETE FROM reports WHERE post_id IN (SELECT post_id FROM posts WHERE board_id = ?)", (board_id,))
-        cursor.execute("DELETE FROM posts WHERE board_id = ?", (board_id,))
-        cursor.execute("DELETE FROM boards WHERE board_id = ?", (board_id,))
 
 
 def seed_admin(cursor: DbCursor):
