@@ -81,6 +81,37 @@
         </section>
     </main>
 
+    <div id="suspend-modal" class="modal-backdrop" hidden>
+        <div class="modal-card" role="dialog" aria-labelledby="suspend-modal-title" aria-modal="true">
+            <div class="modal-header">
+                <h3 id="suspend-modal-title">계정 정지 설정</h3>
+                <button id="suspend-modal-close" class="modal-close-btn" type="button" aria-label="닫기">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p id="suspend-target-info" class="suspend-user-info"></p>
+                <div class="modal-form-group">
+                    <label for="suspend-duration-select">정지 기간</label>
+                    <select id="suspend-duration-select">
+                        <option value="1d">1일</option>
+                        <option value="1w">1주 (7일)</option>
+                        <option value="1m">1개월 (30일)</option>
+                        <option value="6m">6개월 (180일)</option>
+                        <option value="1y">1년 (365일)</option>
+                        <option value="permanent" selected>영구정지</option>
+                    </select>
+                </div>
+                <div class="modal-form-group">
+                    <label for="suspend-reason-input">정지 사유</label>
+                    <input id="suspend-reason-input" type="text" value="커뮤니티 이용규칙 위반" placeholder="정지 사유를 입력하세요" maxlength="200">
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button id="suspend-confirm-button" class="btn-modal-confirm" type="button">정지 적용</button>
+                <button id="suspend-cancel-button" class="btn-modal-cancel" type="button">취소</button>
+            </div>
+        </div>
+    </div>
+
     <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
     <script src="/static/admin.js" defer></script>
 </body>

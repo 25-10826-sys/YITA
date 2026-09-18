@@ -24,6 +24,87 @@ function showToast(message) {
     }, 2600);
 }
 
+function parseKstDate(value) {
+    if (!value) return null;
+    let s = String(value).trim();
+    if (!s) return null;
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(s)) {
+        s = s.replace(" ", "T") + "Z";
+    } else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(s)) {
+        s = s + "Z";
+    }
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? null : d;
+}
+
+function formatKoreanDateTime(value) {
+    const d = parseKstDate(value);
+    if (!d) return value || "";
+    return d.toLocaleString("ko-KR", {
+        timeZone: "Asia/Seoul",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+    });
+}
+
+function formatSuspendStatus(user) {
+    if (!user || !user.timeout_until) return "";
+    const until = String(user.timeout_until).trim();
+    const reasonText = user.suspend_reason ? ` (${user.suspend_reason})` : "";
+    if (until.startsWith("9999")) {
+        return `영구정지${reasonText}`;
+    }
+    const formatted = formatKoreanDateTime(until);
+    return `${formatted}까지${reasonText}`;
+}
+
+let currentSuspendTargetUserId = null;
+
+function openSuspendModal(userId, name, email) {
+    currentSuspendTargetUserId = userId;
+    const targetInfo = qs("#suspend-target-info");
+    if (targetInfo) {
+        targetInfo.textContent = `${name || "회원"} (${email || `ID ${userId}`}) 계정을 정지합니다.`;
+    }
+    const durationSelect = qs("#suspend-duration-select");
+    if (durationSelect) durationSelect.value = "permanent";
+    const reasonInput = qs("#suspend-reason-input");
+    if (reasonInput) reasonInput.value = "커뮤니티 이용규칙 위반";
+    const modal = qs("#suspend-modal");
+    if (modal) modal.hidden = false;
+}
+
+function closeSuspendModal() {
+    currentSuspendTargetUserId = null;
+    const modal = qs("#suspend-modal");
+    if (modal) modal.hidden = true;
+}
+
+async function confirmSuspendModal() {
+    if (!currentSuspendTargetUserId) return;
+    const duration = qs("#suspend-duration-select") ? qs("#suspend-duration-select").value : "permanent";
+    const reason = qs("#suspend-reason-input") ? qs("#suspend-reason-input").value.trim() : "";
+    if (!reason) {
+        showToast("정지 사유를 입력해주세요.");
+        return;
+    }
+    try {
+        await api(`/admin/users/${currentSuspendTargetUserId}/suspend`, {
+            method: "POST",
+            body: JSON.stringify({ duration, reason }),
+        });
+        closeSuspendModal();
+        await refreshAdmin();
+        showToast("계정을 정지했습니다.");
+    } catch (error) {
+        showToast(error.message);
+    }
+}
+
 async function api(path, options = {}) {
     const headers = { ...(options.headers || {}) };
     if (authToken) headers.Authorization = `Bearer ${authToken}`;
@@ -137,7 +218,7 @@ function createUserRow(user) {
         make("strong", { text: `${user.name} (${user.email})` }),
         make("p", {
             className: "post-meta",
-                text: `${user.grade}\uD559\uB144 \u00B7 ${user.role} \u00B7 \uACF5\uC9C0\uAD8C\uD55C ${user.can_post_notice ? "\uC788\uC74C" : "\uC5C6\uC74C"}${user.timeout_until ? ` \u00B7 \uC815\uC9C0\uC911: ${user.timeout_until.slice(0, 16)}` : ""}`,
+            text: `${user.grade}학년 · ${user.role} · 공지권한 ${user.can_post_notice ? "있음" : "없음"}${user.timeout_until ? ` · 정지중: ${formatSuspendStatus(user)}` : ""}`,
         }),
     );
 
@@ -157,7 +238,7 @@ function createUserRow(user) {
 
     const suspend = make("button", { type: "button", text: "정지" });
     suspend.classList.add("danger");
-    suspend.addEventListener("click", () => suspendUser(user.user_id));
+    suspend.addEventListener("click", () => openSuspendModal(user.user_id, user.name, user.email));
     const unsuspend = make("button", { type: "button", text: "정지 해제" });
     unsuspend.addEventListener("click", () => unsuspendUser(user.user_id));
     actions.append(suspend, unsuspend);
@@ -183,13 +264,13 @@ async function renderReportedUsers() {
             make("h3", { text: `${user.name} (${user.email})` }),
             make("p", {
                 className: "post-meta",
-                text: `${user.grade}\uD559\uB144 \u00B7 ${user.role} \u00B7 \uB204\uC801 \uC2E0\uACE0 ${user.report_count}\uAC74${user.timeout_until ? ` \u00B7 \uC815\uC9C0\uC911 ${user.timeout_until.slice(0, 16)}` : ""}`,
+                text: `${user.grade}학년 · ${user.role} · 누적 신고 ${user.report_count}건${user.latest_reported_at ? ` · 최근 신고: ${formatKoreanDateTime(user.latest_reported_at)}` : ""}${user.timeout_until ? ` · 정지중: ${formatSuspendStatus(user)}` : ""}`,
             }),
         );
         const actions = make("div", { className: "admin-actions" });
         const suspend = make("button", { type: "button", text: "계정 정지" });
         suspend.classList.add("danger");
-        suspend.addEventListener("click", () => suspendUser(user.user_id));
+        suspend.addEventListener("click", () => openSuspendModal(user.user_id, user.name, user.email));
         const unsuspend = make("button", { type: "button", text: "정지 해제" });
         unsuspend.addEventListener("click", () => unsuspendUser(user.user_id));
         actions.append(suspend, unsuspend);
@@ -198,12 +279,14 @@ async function renderReportedUsers() {
 
         for (const report of user.reports) {
             const reportBox = make("div", { className: "reported-post-box" });
+            const postTime = report.post_created_at ? ` · 작성: ${formatKoreanDateTime(report.post_created_at)}` : "";
+            const reportTime = report.created_at ? ` · 신고: ${formatKoreanDateTime(report.created_at)}` : "";
             reportBox.append(
                 make("strong", { text: report.post_title }),
                 make("p", { className: "reported-post-content", text: report.post_content }),
                 make("p", {
                     className: "post-meta",
-                    text: `신고자 ${report.reporter_name} (${report.reporter_email}) · 사유: ${report.reason} · 상태: ${report.status}`,
+                    text: `신고자 ${report.reporter_name} (${report.reporter_email})${reportTime}${postTime} · 사유: ${report.reason} · 상태: ${report.status}`,
                 }),
             );
             card.append(reportBox);
@@ -225,12 +308,14 @@ async function renderReports() {
     for (const report of reports) {
         const row = make("div", { className: "admin-row" });
         const info = make("div");
+        const reportTime = report.created_at ? `${formatKoreanDateTime(report.created_at)} · ` : "";
+        const postTime = report.post_created_at ? ` (글 작성: ${formatKoreanDateTime(report.post_created_at)})` : "";
         info.append(
             make("strong", { text: report.post_title }),
             make("p", { className: "reported-post-content", text: report.post_content }),
             make("p", {
                 className: "post-meta",
-                text: `신고자 ${report.reporter_name} (${report.reporter_email}) · 대상 ${report.target_name} (${report.target_email}) · ${report.reason} · ${report.status}`,
+                text: `${reportTime}신고자 ${report.reporter_name} (${report.reporter_email}) · 대상 ${report.target_name} (${report.target_email}) · 사유: ${report.reason} · 상태: ${report.status}${postTime}`,
             }),
         );
         const actions = make("div", { className: "admin-actions" });
@@ -238,7 +323,7 @@ async function renderReports() {
         resolve.addEventListener("click", () => resolveReport(report.report_id));
         const suspend = make("button", { type: "button", text: "작성자 정지" });
         suspend.classList.add("danger");
-        suspend.addEventListener("click", () => suspendUser(report.target_user_id));
+        suspend.addEventListener("click", () => openSuspendModal(report.target_user_id, report.target_name, report.target_email));
         actions.append(resolve, suspend);
         row.append(info, actions);
         box.append(row);
@@ -312,21 +397,8 @@ async function grantAdmin(userId) {
     }
 }
 
-async function suspendUser(userId) {
-    const days = Number(prompt("정지 일수", "7"));
-    if (!days) return;
-    const reason = prompt("정지 사유", "커뮤니티 이용규칙 위반");
-    if (!reason) return;
-    try {
-        await api(`/admin/users/${userId}/suspend`, {
-            method: "POST",
-            body: JSON.stringify({ days, reason }),
-        });
-        await refreshAdmin();
-        showToast("계정을 정지했습니다.");
-    } catch (error) {
-        showToast(error.message);
-    }
+async function suspendUser(userId, name, email) {
+    openSuspendModal(userId, name, email);
 }
 
 async function unsuspendUser(userId) {
@@ -360,7 +432,7 @@ async function approveClub(boardId) {
 }
 
 async function deleteClub(boardId) {
-    if (!confirm("\uC774 \uC18C\uBAA8\uC784\uACFC \uC18C\uBAA8\uC784\uC758 \uAC8C\uC2DC\uAE00/\uB313\uAE00\uC744 \uBAA8\uB450 \uC0AD\uC81C\uD560\uAE4C\uC694?")) return;
+    if (!confirm("이 소모임과 소모임의 게시글/댓글을 모두 삭제할까요?")) return;
     try {
         await api(`/admin/boards/${boardId}`, { method: "DELETE" });
         await refreshAdmin();
@@ -379,4 +451,12 @@ qs("#admin-user-search").addEventListener("keydown", (event) => {
 document.querySelectorAll("[data-admin-tab]").forEach((button) => {
     button.addEventListener("click", () => switchAdminTab(button.dataset.adminTab));
 });
+
+qs("#suspend-modal-close")?.addEventListener("click", closeSuspendModal);
+qs("#suspend-cancel-button")?.addEventListener("click", closeSuspendModal);
+qs("#suspend-confirm-button")?.addEventListener("click", confirmSuspendModal);
+qs("#suspend-modal")?.addEventListener("click", (event) => {
+    if (event.target === qs("#suspend-modal")) closeSuspendModal();
+});
+
 restoreAdminSession();

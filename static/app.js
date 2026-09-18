@@ -417,7 +417,8 @@ function renderArticle(post, comments, boardId) {
         commentList.append(make("p", { className: "muted", text: "댓글이 없습니다." }));
     } else {
         comments.forEach((comment) => {
-            commentList.append(make("div", { className: "comment-row", text: `${comment.author_name}: ${comment.content}` }));
+            const timeText = comment.created_at ? ` · ${formatDate(comment.created_at)}` : "";
+            commentList.append(make("div", { className: "comment-row", text: `${comment.author_name}${timeText}: ${comment.content}` }));
         });
     }
     viewer.append(commentList);
@@ -584,13 +585,29 @@ async function refreshHome() {
     renderHotPosts(homeCache.hot_posts);
 }
 
+function parseKstDate(value) {
+    if (!value) return null;
+    let s = String(value).trim();
+    if (!s) return null;
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(s)) {
+        s = s.replace(" ", "T") + "Z";
+    } else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(s)) {
+        s = s + "Z";
+    }
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? null : d;
+}
+
 function formatDate(value) {
-    if (!value) return "";
-    return new Date(value.replace(" ", "T")).toLocaleString("ko-KR", {
+    const d = parseKstDate(value);
+    if (!d) return "";
+    return d.toLocaleString("ko-KR", {
+        timeZone: "Asia/Seoul",
         month: "2-digit",
         day: "2-digit",
         hour: "2-digit",
         minute: "2-digit",
+        hour12: false,
     });
 }
 

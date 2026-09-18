@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import base64
 import hashlib
 import hmac
@@ -8,6 +8,8 @@ from pathlib import Path
 import sqlite3
 import traceback
 from typing import Optional
+
+KST = timezone(timedelta(hours=9))
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -489,8 +491,9 @@ class NoticePermissionInput(BaseModel):
 
 
 class SuspendInput(BaseModel):
-    days: int = Field(ge=1, le=365)
-    reason: str = Field(min_length=1, max_length=200)
+    duration: Optional[str] = "permanent"
+    days: Optional[int] = None
+    reason: str = Field(default="커뮤니티 이용규칙 위반", min_length=1, max_length=200)
 
 
 class ProfileUpdateInput(BaseModel):
@@ -531,6 +534,43 @@ def auth_response(user: dict, cursor: DbCursor) -> dict:
     return {"user": public_user(user), **create_session(cursor, user["user_id"])}
 
 
+def is_user_suspended(user: dict) -> bool:
+    timeout_until = user.get("timeout_until")
+    if not timeout_until:
+        return False
+    timeout_str = str(timeout_until).strip()
+    if timeout_str.startswith("9999"):
+        return True
+    try:
+        cleaned = timeout_str.replace("Z", "+00:00")
+        if "+" not in cleaned and "-" not in cleaned[10:]:
+            cleaned += "+00:00"
+        until_dt = datetime.fromisoformat(cleaned)
+        return datetime.now(timezone.utc) < until_dt
+    except Exception:
+        now_iso = datetime.now(timezone.utc).isoformat()
+        return now_iso < timeout_str or datetime.now().isoformat() < timeout_str
+
+
+def get_suspend_error_message(user: dict) -> str:
+    timeout_until = user.get("timeout_until")
+    reason = user.get("suspend_reason") or "관리자 정지"
+    if not timeout_until:
+        return f"정지된 계정입니다. 사유: {reason}"
+    timeout_str = str(timeout_until).strip()
+    if timeout_str.startswith("9999"):
+        return f"영구 정지된 계정입니다. 사유: {reason}"
+    try:
+        cleaned = timeout_str.replace("Z", "+00:00")
+        if "+" not in cleaned and "-" not in cleaned[10:]:
+            cleaned += "+00:00"
+        until_dt = datetime.fromisoformat(cleaned).astimezone(KST)
+        formatted = until_dt.strftime("%Y년 %m월 %d일 %H:%M")
+        return f"정지된 계정입니다 (~{formatted} KST까지). 사유: {reason}"
+    except Exception:
+        return f"정지된 계정입니다 (~{timeout_str[:16]}까지). 사유: {reason}"
+
+
 def get_current_user(
     authorization: Optional[str] = Header(None, alias="Authorization"),
     conn: DbConnection = Depends(get_db),
@@ -548,14 +588,14 @@ def get_current_user(
         JOIN users u ON s.user_id = u.user_id
         WHERE s.token_hash = ? AND s.revoked_at IS NULL AND s.expires_at > ?
         """,
-        (hash_token(token), datetime.now().isoformat()),
+        (hash_token(token), datetime.now(timezone.utc).isoformat()),
     )
     user = cursor.fetchone()
     if user is None:
         raise HTTPException(status_code=401, detail="세션이 만료되었거나 유효하지 않습니다.")
     user = dict(user)
-    if user.get("timeout_until") and datetime.now().isoformat() < user["timeout_until"]:
-        raise HTTPException(status_code=403, detail=f"정지된 계정입니다. 사유: {user.get('suspend_reason') or '관리자 정지'}")
+    if is_user_suspended(user):
+        raise HTTPException(status_code=403, detail=get_suspend_error_message(user))
     return user
 
 
@@ -641,8 +681,8 @@ def login(data: LoginInput, conn: DbConnection = Depends(get_db)):
     if user is None or not verify_password(data.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="이메일 또는 비밀번호가 올바르지 않습니다.")
     user = dict(user)
-    if user.get("timeout_until") and datetime.now().isoformat() < user["timeout_until"]:
-        raise HTTPException(status_code=403, detail=f"정지된 계정입니다. 사유: {user.get('suspend_reason') or '관리자 정지'}")
+    if is_user_suspended(user):
+        raise HTTPException(status_code=403, detail=get_suspend_error_message(user))
     payload = auth_response(user, cursor)
     conn.commit()
     return payload
@@ -995,7 +1035,26 @@ def grant_admin(user_id: int, _: dict = Depends(require_admin), conn: DbConnecti
 def suspend_user(user_id: int, data: SuspendInput, admin: dict = Depends(require_admin), conn: DbConnection = Depends(get_db)):
     if user_id == admin["user_id"]:
         raise HTTPException(status_code=400, detail="본인 계정은 정지할 수 없습니다.")
-    until_time = (datetime.now() + timedelta(days=data.days)).isoformat()
+
+    now = datetime.now(timezone.utc)
+    duration_key = (data.duration or "").lower().strip()
+    if duration_key in ("1d", "1day") or data.days == 1:
+        until_time = (now + timedelta(days=1)).isoformat()
+    elif duration_key in ("1w", "7d", "1week") or data.days == 7:
+        until_time = (now + timedelta(days=7)).isoformat()
+    elif duration_key in ("1m", "30d", "1month") or data.days == 30:
+        until_time = (now + timedelta(days=30)).isoformat()
+    elif duration_key in ("6m", "180d", "6months") or data.days == 180:
+        until_time = (now + timedelta(days=180)).isoformat()
+    elif duration_key in ("1y", "365d", "1year") or data.days == 365:
+        until_time = (now + timedelta(days=365)).isoformat()
+    elif duration_key in ("permanent", "forever") or data.days == -1 or (data.days is None and duration_key == "permanent"):
+        until_time = "9999-12-31T23:59:59Z"
+    elif data.days and data.days > 0:
+        until_time = (now + timedelta(days=data.days)).isoformat()
+    else:
+        until_time = "9999-12-31T23:59:59Z"
+
     cursor = conn.cursor()
     cursor.execute(
         "UPDATE users SET timeout_until = ?, suspend_reason = ? WHERE user_id = ?",
