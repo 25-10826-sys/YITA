@@ -361,11 +361,7 @@ def seed_boards(cursor: DbCursor):
         ("grade_1", None, None, 1),
         ("grade_2", None, None, 1),
         ("grade_3", None, None, 1),
-        ("notice", "math", None, 1),
-        ("notice", "science", None, 1),
-        ("notice", "korean", None, 1),
-        ("notice", "english", None, 1),
-        ("notice", "society", None, 1),
+        ("notice", None, None, 1),
     ]
     for board_type, category, club_name, is_approved in seeds:
         cursor.execute(
@@ -381,6 +377,25 @@ def seed_boards(cursor: DbCursor):
                 "INSERT INTO boards (type, category, club_name, is_approved) VALUES (?, ?, ?, ?)",
                 (board_type, category, club_name, is_approved),
             )
+
+    cursor.execute(
+        """
+        SELECT board_id FROM boards
+        WHERE type = 'notice' AND category IS NULL AND club_name IS NULL
+        ORDER BY board_id
+        """
+    )
+    notice_boards = [row[0] for row in cursor.fetchall()]
+    canonical_notice_id = notice_boards[0]
+
+    cursor.execute(
+        "SELECT board_id FROM boards WHERE type = 'notice' AND board_id != ?",
+        (canonical_notice_id,),
+    )
+    for row in cursor.fetchall():
+        legacy_board_id = row[0]
+        cursor.execute("UPDATE posts SET board_id = ? WHERE board_id = ?", (canonical_notice_id, legacy_board_id))
+        cursor.execute("DELETE FROM boards WHERE board_id = ?", (legacy_board_id,))
 
 
 def seed_admin(cursor: DbCursor):

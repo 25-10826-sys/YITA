@@ -12,11 +12,7 @@ const boardMeta = {
     grade_1: { title: "1학년 게시판", description: "1학년 학생 전용 게시판입니다." },
     grade_2: { title: "2학년 게시판", description: "2학년 학생 전용 게시판입니다." },
     grade_3: { title: "3학년 게시판", description: "3학년 학생 전용 게시판입니다." },
-    notice_math: { title: "수학 공지", description: "수학 과목 공지와 자료를 공유합니다." },
-    notice_science: { title: "과학 공지", description: "과학 과목 공지와 자료를 공유합니다." },
-    notice_korean: { title: "국어 공지", description: "국어 과목 공지와 자료를 공유합니다." },
-    notice_english: { title: "영어 공지", description: "영어 과목 공지와 자료를 공유합니다." },
-    notice_society: { title: "사회 공지", description: "사회 과목 공지와 자료를 공유합니다." },
+    notice: { title: "전체 공지 게시판", description: "학교의 모든 공지사항을 확인하는 공간입니다." },
 };
 
 const qs = (selector) => document.querySelector(selector);
@@ -263,7 +259,7 @@ async function bootCommunity() {
 }
 
 function boardKey(board) {
-    if (board.type === "notice") return `notice_${board.category}`;
+    if (board.type === "notice") return "notice";
     return board.type;
 }
 
