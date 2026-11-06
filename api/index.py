@@ -9,6 +9,8 @@ import sqlite3
 import traceback
 from typing import Optional
 
+#왜 이 새끼 작동을 안해
+
 KST = timezone(timedelta(hours=9))
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
