@@ -3,4 +3,4 @@ Allow: /
 Disallow: /admin
 Disallow: /api/
 
-Sitemap: https://yita.vercel.app/sitemap.xml
+Sitemap: https://yita-plum.vercel.app/sitemap.xml
